@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * originally based on m0n0wall (http://m0n0.ch/wall)
@@ -32,7 +32,7 @@
 ##|*MATCH=firewall_schedule.php*
 ##|-PRIV
 
-define('CLOCK', '<i class="fa-regular fa-clock icon-black"></i>');
+define('CLOCK', '<i class="fa-regular fa-clock"></i>');
 
 $dayArray = array (gettext('Mon'), gettext('Tues'), gettext('Wed'), gettext('Thur'), gettext('Fri'), gettext('Sat'), gettext('Sun'));
 $monthArray = array (gettext('January'), gettext('February'), gettext('March'), gettext('April'), gettext('May'), gettext('June'), gettext('July'), gettext('August'), gettext('September'), gettext('October'), gettext('November'), gettext('December'));
@@ -43,9 +43,6 @@ require_once("shaper.inc");
 require_once("firewall_schedule.inc");
 
 $pgtitle = array(gettext("Firewall"), gettext("Schedules"));
-
-init_config_arr(array('schedules', 'schedule'));
-$a_schedules = &$config['schedules']['schedule'];
 
 if ($_POST['act'] == "del") {
 	$errmsg = deleteSchedule($_POST);
@@ -74,7 +71,7 @@ if ($errmsg) {
 			<tbody>
 <?php
 $i = 0;
-foreach ($a_schedules as $schedule):
+foreach (config_get_path('schedules/schedule', []) as $schedule):
 	$schedstatus = filter_get_time_based_rule_status($schedule);
 ?>
 				<tr>
@@ -110,8 +107,8 @@ foreach ($a_schedules as $schedule):
 				$firstDayFound = false;
 				$firstPrint = false;
 				foreach ($tempmontharray as $monthtmp) {
-					$month = $tempmontharray[$arraycounter];
-					$day = $tempdayarray[$arraycounter];
+					$month = (int)$tempmontharray[$arraycounter];
+					$day = (int)$tempdayarray[$arraycounter];
 
 					if (!$firstDayFound) {
 						$firstDay = $day;

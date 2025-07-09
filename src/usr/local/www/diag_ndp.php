@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * Copyright (c) 2011 Seth Mos <seth.mos@dds.nl>
  * All rights reserved.
  *
@@ -74,7 +74,7 @@ $i = 0;
 $ifdescrs = get_configured_interface_with_descr();
 
 foreach ($ifdescrs as $key =>$interface) {
-	$hwif[$config['interfaces'][$key]['if']] = $interface;
+	$hwif[config_get_path("interfaces/{$key}/if")] = $interface;
 }
 
 /*

@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * Copyright (c) 2010 Seth Mos <seth.mos@dds.nl>
  * All rights reserved.
  *
@@ -33,8 +33,6 @@ require_once("guiconfig.inc");
 require_once("ipsec.inc");
 require_once("vpn.inc");
 
-init_config_arr(array('gateways', 'gateway_group'));
-$a_gateway_groups = &$config['gateways']['gateway_group'];
 $a_gateways = get_gateways();
 
 $categories = array(
@@ -51,12 +49,13 @@ if (isset($_REQUEST['dup']) && is_numericint($_REQUEST['dup'])) {
 	$id = $_REQUEST['dup'];
 }
 
-if (isset($id) && $a_gateway_groups[$id]) {
-	$pconfig['name'] = $a_gateway_groups[$id]['name'];
-	$pconfig['item'] = &$a_gateway_groups[$id]['item'];
-	$pconfig['descr'] = $a_gateway_groups[$id]['descr'];
-	$pconfig['trigger'] = $a_gateway_groups[$id]['trigger'];
-	$pconfig['keep_failover_states'] = $a_gateway_groups[$id]['keep_failover_states'];
+$this_gateway_group_config = isset($id) ? config_get_path("gateways/gateway_group/{$id}") : null;
+if ($this_gateway_group_config) {
+	$pconfig['name'] = $this_gateway_group_config['name'];
+	$pconfig['item'] = $this_gateway_group_config['item'];
+	$pconfig['descr'] = $this_gateway_group_config['descr'];
+	$pconfig['trigger'] = $this_gateway_group_config['trigger'];
+	$pconfig['keep_failover_states'] = $this_gateway_group_config['keep_failover_states'];
 }
 
 if (isset($_REQUEST['dup']) && is_numericint($_REQUEST['dup'])) {
@@ -83,19 +82,17 @@ if (isset($_POST['save'])) {
 
 	if (isset($_POST['name'])) {
 		/* check for overlaps */
-		if (is_array($a_gateway_groups)) {
-			foreach ($a_gateway_groups as $gateway_group) {
-				if (isset($id) && ($a_gateway_groups[$id]) && ($a_gateway_groups[$id] === $gateway_group)) {
-					if ($gateway_group['name'] != $_POST['name']) {
-						$input_errors[] = gettext("Changing name on a gateway group is not allowed.");
-					}
-					continue;
+		foreach (config_get_path('gateways/gateway_group', []) as $gateway_group) {
+			if (isset($id) && ($this_gateway_group_config && ($this_gateway_group_config === $gateway_group))) {
+				if ($gateway_group['name'] != $_POST['name']) {
+					$input_errors[] = gettext("Changing name on a gateway group is not allowed.");
 				}
+				continue;
+			}
 
-				if ($gateway_group['name'] == $_POST['name']) {
-					$input_errors[] = sprintf(gettext('A gateway group with this name "%s" already exists.'), $_POST['name']);
-					break;
-				}
+			if ($gateway_group['name'] == $_POST['name']) {
+				$input_errors[] = sprintf(gettext('A gateway group with this name "%s" already exists.'), $_POST['name']);
+				break;
 			}
 		}
 	}
@@ -128,10 +125,10 @@ if (isset($_POST['save'])) {
 		}
 		$gateway_group['descr'] = $_POST['descr'];
 
-		if (isset($id) && $a_gateway_groups[$id]) {
-			$a_gateway_groups[$id] = $gateway_group;
+		if ($this_gateway_group_config) {
+			config_set_path("gateways/gateway_group/{$id}", $gateway_group);
 		} else {
-			$a_gateway_groups[] = $gateway_group;
+			config_set_path('gateways/gateway_group/', $gateway_group);
 		}
 
 		mark_subsystem_dirty('staticroutes');
@@ -313,10 +310,11 @@ $section->addInput(new Form_Select(
 		'kill' => 'Kill states on gateway recovery',
 	]
 ))->setHelp('%2$sKeep states on gateway recovery%3$s: states for this gateway ' .
-	'group are unaffected.%1$s%2$sKill states on gateway recovery%3$s: kill  ' .
-	'policy routing states for lower-priority gateways.%1$sNote: gateway ' .
-	'priority changes may not affect states created before those changes.',
-	'<br/>', '<strong>', '</strong>');
+	'group are unaffected.%1$s%2$sKill states on gateway recovery%3$s: states  ' .
+	'created for lower-priority gateways by policy-routing firewall rules will ' .
+	'be killed.%1$sNote: changes to the gateway priority configuration only ' .
+	'affect states created after settings are applied - states which already ' .
+	'exist may need to be manually killed.', '<br/>', '<strong>', '</strong>');
 
 $section->addInput(new Form_Select(
 	'trigger',
@@ -332,7 +330,7 @@ $section->addInput(new Form_Input(
 	$pconfig['descr']
 ))->setHelp('A description may be entered here for administrative reference (not parsed).');
 
-if (isset($id) && $a_gateway_groups[$id]) {
+if ($this_gateway_group_config) {
 	$form->addGlobal(new Form_Input(
 	'id',
 	null,

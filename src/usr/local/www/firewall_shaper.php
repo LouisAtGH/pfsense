@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -218,7 +218,8 @@ if ($_POST) {
 		$altq->validate_input($_POST, $input_errors);
 		if (!$input_errors) {
 			unset($tmppath);
-			$tmppath[] = $altq->GetInterface();
+			$tmppath = array();
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$altq->SetLink($tmppath);
 			$altq->wconfig();
 			if (write_config("Traffic Shaper: Added root queue")) {
@@ -234,7 +235,7 @@ if ($_POST) {
 		$qtmp =& $altq->find_queue($interface, $parentqueue);
 		if ($qtmp) {
 			$tmppath =& $qtmp->GetLink();
-			array_push($tmppath, $qname);
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$tmp =& $qtmp->add_queue($interface, $_POST, $tmppath, $input_errors);
 			if (!$input_errors) {
 				array_pop($tmppath);

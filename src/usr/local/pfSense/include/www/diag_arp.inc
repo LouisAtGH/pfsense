@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * originally based on m0n0wall (http://m0n0.ch/wall)
@@ -77,6 +77,8 @@ function prepare_ARP_table($json = false) {
 			$entry['dnsresolve'] = "Z_ ";
 		}
 
+		$entry['mac-man'] = null;
+
 		// Fix MAC address
 		if (empty($entry['mac-address'])) {
 			$mac = '(' . gettext("Incomplete") .')';
@@ -90,9 +92,7 @@ function prepare_ARP_table($json = false) {
 			    $mac[7]);
 
 			if (isset($mac_man[$mac_hi])) {
-				$entry['mac-address'] .= ' <small>('.
-				    $mac_man[$mac_hi] .
-				    ')</small>';
+				$entry['mac-man'] = $mac_man[$mac_hi];
 			}
 		}
 

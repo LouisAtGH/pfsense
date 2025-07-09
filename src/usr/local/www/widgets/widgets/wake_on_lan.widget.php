@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * Copyright (c)  2010 Yehuda Katz
  * All rights reserved.
  *
@@ -26,16 +26,28 @@ require_once("guiconfig.inc");
 require_once("system.inc");
 require_once("/usr/local/www/widgets/include/wake_on_lan.inc");
 
-if (isset($config['wol']['wolentry']) && is_array($config['wol']['wolentry'])) {
-	$wolcomputers = config_get_path('wol/wolentry');
-} else {
-	$wolcomputers = array();
+/*
+ * Validate the "widgetkey" value.
+ * When this widget is present on the Dashboard, $widgetkey is defined before
+ * the Dashboard includes the widget. During other types of requests, such as
+ * saving settings or AJAX, the value may be set via $_POST or similar.
+ */
+if ($_POST['widgetkey'] || $_GET['widgetkey']) {
+	$rwidgetkey = isset($_POST['widgetkey']) ? $_POST['widgetkey'] : (isset($_GET['widgetkey']) ? $_GET['widgetkey'] : null);
+	if (is_valid_widgetkey($rwidgetkey, $user_settings, __FILE__)) {
+		$widgetkey = $rwidgetkey;
+	} else {
+		print gettext("Invalid Widget Key");
+		exit;
+	}
 }
+
+$wolcomputers = config_get_path('wol/wolentry', []);
 
 // Constructs a unique key that will identify a WoL entry in the filter list.
 if (!function_exists('get_wolent_key')) {
 	function get_wolent_key($wolent) {
-		return ($wolent['interface'] . "|" . $wolent['mac']);
+		return (htmlspecialchars($wolent['interface']) . "|" . $wolent['mac']);
 	}
 }
 
@@ -105,7 +117,7 @@ if (count($wolcomputers) > 0):
 				<?= $wolent['mac'] ?>
 			</td>
 			<td>
-				<?= convert_friendly_interface_to_friendly_descr($wolent['interface']) ?>
+				<?= htmlspecialchars(convert_friendly_interface_to_friendly_descr($wolent['interface'])) ?>
 			</td>
 			<td>
 		<?php if ($status == 'expires'): ?>
@@ -117,7 +129,7 @@ if (count($wolcomputers) > 0):
 		<?php endif; ?>
 			</td>
 			<td>
-				<a href="services_wol.php?mac=<?= $wolent['mac'] ?>&amp;if=<?= $wolent['interface']?>" usepost>
+				<a href="services_wol.php?mac=<?= $wolent['mac'] ?>&amp;if=<?= urlencode($wolent['interface']) ?>" usepost>
 				<i class="fa-solid fa-power-off" data-toggle="tooltip" title="<?= gettext("Wake up!") ?>"></i>
 				</a>
 			</td>
@@ -139,15 +151,13 @@ endif;
 </table>
 <?php
 $dhcpd_enabled = false;
-if (is_array($config['dhcpd'])) {
-	foreach (config_get_path('dhcpd', []) as $dhcpif => $dhcp) {
-		if (empty($dhcp)) {
-			continue;
-		}
-		if (isset($dhcp['enable']) && isset($config['interfaces'][$dhcpif]['enable'])) {
-			$dhcpd_enabled = true;
-			break;
-		}
+foreach (config_get_path('dhcpd', []) as $dhcpif => $dhcp) {
+	if (empty($dhcp)) {
+		continue;
+	}
+	if (isset($dhcp['enable']) && config_path_enabled("interfaces/{$dhcpif}")) {
+		$dhcpd_enabled = true;
+		break;
 	}
 }
 ?>

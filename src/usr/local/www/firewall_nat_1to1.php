@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * originally based on m0n0wall (http://m0n0.ch/wall)
@@ -38,8 +38,6 @@ require_once("filter.inc");
 require_once("shaper.inc");
 require_once("firewall_nat_1to1.inc");
 
-init_config_arr(array('nat', 'onetoone'));
-$a_1to1 = &$config['nat']['onetoone'];
 $binat_exttype_flags = [SPECIALNET_IFADDR];
 $binat_srctype_flags = [SPECIALNET_ANY, SPECIALNET_CLIENTS, SPECIALNET_IFADDR, SPECIALNET_IFSUB];
 $binat_dsttype_flags = [SPECIALNET_ANY, SPECIALNET_CLIENTS, SPECIALNET_IFADDR, SPECIALNET_IFSUB, SPECIALNET_VIPS];
@@ -54,7 +52,7 @@ if (array_key_exists('order-store', $_REQUEST)) {
 } elseif ($_POST['apply']) {
 	$retval = apply1to1NATrules();
 } elseif (($_POST['act'] == "del")) {
-	if ($a_1to1[$_POST['id']]) {
+	if (config_get_path("nat/onetoone/{$_POST['id']}")) {
 		delete1to1NATrule($_POST);
 	}
 } elseif (isset($_POST['del_x'])) {
@@ -67,7 +65,7 @@ if (array_key_exists('order-store', $_REQUEST)) {
 		toggleMultiple1to1NATrules($_POST);
 	}
 } elseif (($_POST['act'] == "toggle")) {
-	if ($a_1to1[$_POST['id']]) {
+	if (config_get_path("nat/onetoone/{$_POST['id']}")) {
 		toggle1to1NATrule($_POST);
 	}
 }
@@ -117,7 +115,7 @@ $system_alias_specialnet = get_specialnet('', [SPECIALNET_IFNET, SPECIALNET_GROU
 				<tbody class="user-entries">
 <?php
 		$i = 0;
-		foreach ($a_1to1 as $natent):
+		foreach (config_get_path('nat/onetoone', []) as $natent):
 			if (isset($natent['disabled'])) {
 				$iconfn = "pass_d";
 			} else {
@@ -163,7 +161,7 @@ $system_alias_specialnet = get_specialnet('', [SPECIALNET_IFNET, SPECIALNET_GROU
 									<?=str_replace('_', '_<wbr>', htmlspecialchars(pprint_address($natent['source'], $binat_srctype_flags)))?>
 								</a>
 							<?php elseif ($show_system_alias_popup && array_key_exists($natent['source']['network'], $system_alias_specialnet)): ?>
-								<a data-toggle="popover" data-trigger="hover focus" title="<?=gettext('System alias details')?>" data-content="<?=system_alias_info_popup($natent['source']['network'])?>" data-html="true">
+								<a data-toggle="popover" data-trigger="hover focus" title="<?=gettext('System alias details')?>" data-content="<?=alias_info_popup(strtoupper($natent['source']['network']) . '__NETWORK', true)?>" data-html="true">
 									<?=str_replace('_', '_<wbr>', htmlspecialchars(pprint_address($natent['source'], $binat_srctype_flags)))?>
 								</a>
 							<?php else: ?>
@@ -176,7 +174,7 @@ $system_alias_specialnet = get_specialnet('', [SPECIALNET_IFNET, SPECIALNET_GROU
 									<?=str_replace('_', '_<wbr>', htmlspecialchars(pprint_address($natent['destination'], $binat_dsttype_flags)))?>
 								</a>
 							<?php elseif ($show_system_alias_popup && array_key_exists($natent['destination']['network'], $system_alias_specialnet)): ?>
-								<a data-toggle="popover" data-trigger="hover focus" title="<?=gettext('System alias details')?>" data-content="<?=system_alias_info_popup($natent['destination']['network'])?>" data-html="true">
+								<a data-toggle="popover" data-trigger="hover focus" title="<?=gettext('System alias details')?>" data-content="<?=alias_info_popup(strtoupper($natent['destination']['network']) . '__NETWORK', true)?>" data-html="true">
 									<?=str_replace('_', '_<wbr>', htmlspecialchars(pprint_address($natent['destination'], $binat_dsttype_flags)))?>
 								</a>
 							<?php else: ?>
@@ -243,7 +241,7 @@ $system_alias_specialnet = get_specialnet('', [SPECIALNET_IFNET, SPECIALNET_GROU
 //<![CDATA[
 events.push(function() {
 
-<?php if(!isset($config['system']['webgui']['roworderdragging'])): ?>
+<?php if(!config_path_enabled('system/webgui', 'roworderdragging')): ?>
 	// Make rules sortable
 	$('table tbody.user-entries').sortable({
 		cursor: 'grabbing',

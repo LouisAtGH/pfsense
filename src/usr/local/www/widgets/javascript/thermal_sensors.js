@@ -4,7 +4,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,17 +23,19 @@
 var warningTemp = 9999;
 var criticalTemp = 100;
 var widgetUnit = 'C';
-ajaxBusy = false;
+var firstTime = true;
 
-function buildThermalSensorsData(thermalSensorsData, widgetKey, tsParams, firstTime) {
+function buildThermalSensorsData(thermalSensorsData, widgetKey, tsParams) {
 	if (tsParams.showRawOutput) {
 		buildThermalSensorsDataRaw(thermalSensorsData, widgetKey);
 	} else {
 		if (firstTime) {
 			buildThermalSensorsDataGraph(thermalSensorsData, tsParams, widgetKey);
+			updateThermalSensorsDataGraph(thermalSensorsData, tsParams, widgetKey);
+			firstTime = false;
+		} else {
+			updateThermalSensorsDataGraph(thermalSensorsData, tsParams, widgetKey);
 		}
-
-		updateThermalSensorsDataGraph(thermalSensorsData, tsParams, widgetKey);
 	}
 }
 
@@ -99,7 +101,7 @@ function buildThermalSensorsDataGraph(thermalSensorsData, tsParams, widgetKey) {
 
 		//build temperature item/row for a sensor
 
-		var thermalSensorRow =	'<div class="progress">' +
+		var thermalSensorRow =	'<div class="progress" style="margin-top: 5px">' +
 						'<div id="temperaturebarL' + i + widgetKey + '" class="progress-bar progress-bar-success progress-bar-striped" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="1" style="width: 1%"></div>' +
 						'<div id="temperaturebarM' + i + widgetKey + '" class="progress-bar progress-bar-warning progress-bar-striped" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" style="width: 0%"></div>' +
 						'<div id="temperaturebarH' + i + widgetKey + '" class="progress-bar progress-bar-danger progress-bar-striped" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" style="width: 0%"></div>' +
@@ -124,15 +126,14 @@ function updateThermalSensorsDataGraph(thermalSensorsData, tsParams, widgetKey) 
 		thermalSensorsArray = thermalSensorsData.split("|");
 	}
 
-	//generate graph for each temperature sensor and append to thermalSensorsHTMLContent string
+	//update thermal sensor values
 	for (var i = 0; i < thermalSensorsArray.length; i++) {
 
 		var sensorDataArray = thermalSensorsArray[i].split(":");
 		var sensorName = sensorDataArray[0].trim();
 		var thermalSensorValue = getThermalSensorValue(sensorDataArray[1]);
 
-
-		//set thresholds
+		//set thresholds every time we update
 		if (sensorName.indexOf("cpu") > -1) { //check CPU Threshold config settings
 			warningTemp = tsParams.coreWarningTempThreshold;
 			criticalTemp = tsParams.coreCriticalTempThreshold;
@@ -142,10 +143,6 @@ function updateThermalSensorsDataGraph(thermalSensorsData, tsParams, widgetKey) 
 		} else { //assuming sensor is for a zone, check Zone Threshold config settings
 			warningTemp = tsParams.zoneWarningTempThreshold;
 			criticalTemp = tsParams.zoneCriticalTempThreshold;
-		}
-
-		if (!tsParams.showFullSensorName) {
-			sensorName = getSensorFriendlyName(sensorName);
 		}
 
 		setTempProgress(i, thermalSensorValue, widgetKey);

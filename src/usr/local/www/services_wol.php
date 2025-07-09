@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * originally based on m0n0wall (http://m0n0.ch/wall)
@@ -34,9 +34,6 @@
 
 require_once("guiconfig.inc");
 
-init_config_arr(array('wol', 'wolentry'));
-$a_wol = &$config['wol']['wolentry'];
-
 function send_wol($if, $mac, $description, & $savemsg, & $class) {
 	$ipaddr = get_interface_ip($if);
 	if (!is_ipaddr($ipaddr) || !is_macaddr($mac)) {
@@ -61,7 +58,7 @@ $savemsg = "";
 $class = "";
 
 if ($_REQUEST['wakeall'] != "") {
-	foreach ($a_wol as $wolent) {
+	foreach (config_get_path('wol/wolentry', []) as $wolent) {
 		send_wol($wolent['interface'], $wolent['mac'], $wolent['descr'], $savemsg, $class);
 	}
 	$savemsg .= gettext('Sent magic packet to all devices.') . "<br />";
@@ -81,7 +78,7 @@ if ($_POST['Submit'] || $_POST['mac']) {
 		$input_errors[] = gettext("A valid MAC address must be specified.");
 	}
 
-	if (!$if) {
+	if (!$if || !array_key_exists($if, get_configured_interface_with_descr())) {
 		$input_errors[] = gettext("A valid interface must be specified.");
 	}
 
@@ -90,9 +87,9 @@ if ($_POST['Submit'] || $_POST['mac']) {
 	}
 }
 
-if ($_POST['act'] == "del") {
-	if ($a_wol[$_POST['id']]) {
-		unset($a_wol[$_POST['id']]);
+if (is_numericint($_POST['id']) && $_POST['act'] == "del") {
+	if (config_get_path("wol/wolentry/{$_POST['id']}")) {
+		config_del_path("wol/wolentry/{$_POST['id']}");
 		write_config(gettext("Deleted a device from WOL configuration."));
 		header("Location: services_wol.php");
 		exit;
@@ -162,7 +159,7 @@ print $form;
 
 <?php
 	// Add top buttons if more than 24 entries in the table
-	if (is_array($a_wol) && (count($a_wol) > 24)) {
+	if (count(config_get_path('wol/wolentry', [])) > 24) {
 ?>
 	<div class="panel-footer">
 		<a class="btn btn-success" href="services_wol_edit.php">
@@ -190,13 +187,13 @@ print $form;
 					</tr>
 				</thead>
 				<tbody>
-					<?php foreach ($a_wol as $i => $wolent): ?>
+					<?php foreach (config_get_path('wol/wolentry', []) as $i => $wolent): ?>
 						<tr>
 							<td>
-								<?=convert_friendly_interface_to_friendly_descr($wolent['interface']);?>
+								<?=htmlspecialchars(convert_friendly_interface_to_friendly_descr($wolent['interface']));?>
 							</td>
 							<td>
-								<a href="?mac=<?=$wolent['mac'];?>&amp;if=<?=$wolent['interface'];?>" usepost><?=strtolower($wolent['mac']);?></a>
+								<a href="?mac=<?=$wolent['mac'];?>&amp;if=<?=urlencode($wolent['interface']);?>" usepost><?=strtolower($wolent['mac']);?></a>
 							</td>
 							<td>
 								<?=htmlspecialchars($wolent['descr']);?>
@@ -204,7 +201,7 @@ print $form;
 							<td>
 								<a class="fa-solid fa-pencil"	title="<?=gettext('Edit Device')?>"	href="services_wol_edit.php?id=<?=$i?>"></a>
 								<a class="fa-solid fa-trash-can"	title="<?=gettext('Delete Device')?>" href="services_wol.php?act=del&amp;id=<?=$i?>" usepost></a>
-								<a class="fa-solid fa-power-off" title="<?=gettext('Wake Device')?>" href="?mac=<?=$wolent['mac'];?>&amp;if=<?=$wolent['interface'];?>" usepost></a>
+								<a class="fa-solid fa-power-off" title="<?=gettext('Wake Device')?>" href="?mac=<?=$wolent['mac'];?>&amp;if=<?=urlencode($wolent['interface']);?>" usepost></a>
 							</td>
 						</tr>
 					<?php endforeach?>

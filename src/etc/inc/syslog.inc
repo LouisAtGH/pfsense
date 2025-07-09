@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * originally part of m0n0wall (http://m0n0.ch/wall)
@@ -192,7 +192,7 @@ function system_syslogd_start($sighup = false) {
 
 	$syslogcfg = config_get_path('syslog', []);
 
-	if (platform_booting()) {
+	if (is_platform_booting()) {
 		echo gettext("Starting syslog...");
 	}
 
@@ -213,7 +213,16 @@ EOD;
 	safe_mkdir("{$g['varetc_path']}/syslog.d");
 
 	$syslogd_extra = "";
-	$separatelogfacilities = array('ntp', 'ntpd', 'ntpdate', 'charon', 'ipsec_starter', 'openvpn', 'poes', 'l2tps', 'hostapd', 'dnsmasq', 'named', 'filterdns', 'unbound', 'dhcpd', 'dhcrelay', 'dhclient', 'dhcp6c', 'dpinger', 'radvd', 'routed', 'zebra', 'ospfd', 'ospf6d', 'bgpd', 'watchfrr', 'miniupnpd', 'igmpproxy', 'filterlog');
+	$separatelogfacilities = [
+		'bgpd', 'charon', 'dhclient', 'dhcp6c',
+		'dhcpd', 'dhcrelay', 'dnsmasq', 'dpinger',
+		'filterdns', 'filterlog', 'hostapd', 'igmpproxy',
+		'ipsec_starter', 'kea-dhcp4', 'kea-dhcp6', 'unbound',
+		'kea2fib6', 'kea2unbound', 'l2tps', 'miniupnpd', 'named',
+		'ntp', 'ntpd', 'ntpdate', 'openvpn',
+		'ospf6d', 'ospfd', 'poes', 'radvd',
+		'routed', 'watchfrr', 'zebra'
+	];
 	$syslogconf = "# Automatically generated, do not edit!\n";
 
 	foreach (config_get_path('installedpackages/package', []) as $key => $package) {
@@ -231,7 +240,6 @@ EOD;
 			@file_put_contents("{$g['varetc_path']}/syslog.d/" . basename($pkg_log_filename) . ".conf", $pkgsyslogconf);
 		}
 	}
-	$facilitylist = implode(',', array_unique($separatelogfacilities));
 
 	$syslogconf .= "!*\n";
 	if (!config_path_enabled('syslog', 'disablelocallogging')) {
@@ -322,7 +330,7 @@ EOD;
 		$syslogconf .= system_syslogd_get_remote_servers($syslogcfg, "*.*");
 	}
 
-	$syslogconf .= "!dhcpd,dhcrelay,dhclient,dhcp6c,dhcpleases,dhcpleases6,kea-dhcp4,kea-dhcp6\n";
+	$syslogconf .= "!dhcpd,dhcrelay,dhclient,dhcp6c,dhcpleases,dhcpleases6,kea2fib6,kea2unbound,kea-dhcp4,kea-dhcp6\n";
 	if (!config_path_enabled('syslog', 'disablelocallogging')) {
 		$syslogconf .= "*.*									{$g['varlog_path']}/dhcpd.log\n";
 	}
@@ -354,17 +362,26 @@ EOD;
 		$syslogconf .= system_syslogd_get_remote_servers($syslogcfg, "*.*");
 	}
 
+	$facilitylist = implode(',', array_unique($separatelogfacilities));
 	$syslogconf .= "!-{$facilitylist}\n";
 	if (!config_path_enabled('syslog', 'disablelocallogging')) {
 		$syslogconf .= <<<EOD
 local3.*							{$g['varlog_path']}/vpn.log
 local5.*							{$g['varlog_path']}/nginx.log
 *.notice;kern.debug;lpr.info;mail.crit;daemon.none;news.err;local0.none;local3.none;local4.none;local7.none;security.*;auth.info;authpriv.info;daemon.info	{$g['varlog_path']}/system.log
-auth.info;authpriv.info 			|exec /usr/local/sbin/sshguard -i /var/run/sshguard.pid
 *.emerg								*
 
 EOD;
 	}
+
+	$syslogconf .= <<<EOD
+!*
+:msg, startswith, "if_pppoe: "
+*.*								{$g['varlog_path']}/ppp.log
+:*
+
+EOD;
+
 	if (config_path_enabled('syslog', 'vpn')) {
 		$syslogconf .= system_syslogd_get_remote_servers($syslogcfg, "local3.*");
 	}
@@ -433,6 +450,35 @@ EOD;
 		$sighup = false;
 	}
 
+	if (!$sighup) {
+		if (isvalidpid("{$g['varrun_path']}/syslog.pid")) {
+			sigkillbypid("{$g['varrun_path']}/syslog.pid", "TERM");
+			usleep(100000); // syslogd often doesn't respond to a TERM quickly enough for the starting of syslogd below to be successful
+		}
+
+		if (isvalidpid("{$g['varrun_path']}/syslog.pid")) {
+			// if it still hasn't responded to the TERM, KILL it.
+			sigkillbypid("{$g['varrun_path']}/syslog.pid", "KILL");
+			usleep(100000);
+		}
+
+		$retval = mwexec_bg("/usr/sbin/syslogd {$syslogd_format} -s -c -c {$syslogd_sockets} -P {$g['varrun_path']}/syslog.pid {$syslogd_extra}");
+	} else {
+		$retval = sigkillbypid("{$g['varrun_path']}/syslog.pid", "HUP");
+	}
+
+	if (!config_path_enabled('syslog', 'disablelocallogging')) {
+		system_sshguard_start();
+	}
+
+	if (is_platform_booting()) {
+		echo gettext("done.") . "\n";
+	}
+
+	return $retval;
+}
+
+function system_sshguard_start() {
 	$sshguard_whitelist = array();
 	if (!empty(config_get_path('system/sshguard_whitelist'))) {
 		$sshguard_whitelist = explode(' ',
@@ -440,7 +486,7 @@ EOD;
 	}
 
 	$sshguard_config = array();
-	$sshguard_config[] = 'LOGREADER="/bin/cat"' . "\n";
+	$sshguard_config[] = 'FILES="' . g_get('varlog_path') . '/auth.log"' . "\n";
 	$sshguard_config[] = 'BACKEND="/usr/local/libexec/sshg-fw-pf"' . "\n";
 	if (!empty(config_get_path('system/sshguard_threshold'))) {
 		$sshguard_config[] = 'THRESHOLD=' .
@@ -464,29 +510,11 @@ EOD;
 	}
 	file_put_contents("/usr/local/etc/sshguard.conf", $sshguard_config);
 
-	if (!$sighup) {
-		sigkillbyname("sshguard", "TERM");
-		if (isvalidpid("{$g['varrun_path']}/syslog.pid")) {
-			sigkillbypid("{$g['varrun_path']}/syslog.pid", "TERM");
-			usleep(100000); // syslogd often doesn't respond to a TERM quickly enough for the starting of syslogd below to be successful
-		}
+	mwexec_bg('/usr/sbin/daemon -R 60 -P /var/run/daemon_sshguard.pid -t sshguard /usr/local/sbin/sshguard -i /var/run/sshguard.pid');
+}
 
-		if (isvalidpid("{$g['varrun_path']}/syslog.pid")) {
-			// if it still hasn't responded to the TERM, KILL it.
-			sigkillbypid("{$g['varrun_path']}/syslog.pid", "KILL");
-			usleep(100000);
-		}
-
-		$retval = mwexec_bg("/usr/sbin/syslogd {$syslogd_format} -s -c -c {$syslogd_sockets} -P {$g['varrun_path']}/syslog.pid {$syslogd_extra}");
-	} else {
-		$retval = sigkillbypid("{$g['varrun_path']}/syslog.pid", "HUP");
-	}
-
-	if (platform_booting()) {
-		echo gettext("done.") . "\n";
-	}
-
-	return $retval;
+function system_sshguard_stop() {
+	mwexec_bg('pkill -f "' . str_replace('/', '\\/', g_get('varlog_path')) . '\\/auth\.log|[[:<:]](sshguard|sshg-parser|sshg-fw-pf|sshg-blocker)[[:>:]]"');
 }
 
 function system_log_get_compression() {
@@ -1067,7 +1095,7 @@ function parse_firewall_log_line($line) {
 	list($all, $flent['time'], $host, $rule) = $log_split;
 	$flent['time'] = str_replace('T', ' ', $flent['time']);
 
-	$rule_data = explode(",", $rule);
+	$rule_data = array_filter(explode(",", $rule));
 	$field = 0;
 
 	$flent['rulenum'] = $rule_data[$field++];
@@ -1221,32 +1249,70 @@ function get_port_with_service($port, $proto) {
 }
 
 function find_rule_by_number($rulenum, $trackernum, $type="block") {
-	global $g;
+	$result = [
+		'match' => null,
+		'associated' => null
+	];
 
 	/* Passing arbitrary input to grep could be a Very Bad Thing(tm) */
-	if (!is_numeric($rulenum) || !is_numeric($trackernum) || !in_array($type, array('pass', 'block', 'match', 'rdr'))) {
-		return;
+	if (!is_numeric($rulenum) || !is_numeric($trackernum)) {
+		return $result;
 	}
 
-	if ($trackernum == "0") {
-		$lookup_pattern = "^@{$rulenum}\([0-9]+\)[[:space:]]{$type}[[:space:]].*[[:space:]]log[[:space:]]";
+	switch ($type) {
+		case 'pass':
+		case 'block':
+		case 'match':
+		case 'rdr':
+			break;
+		default:
+			return $result;
+	}
+
+	if ($type == 'rdr') {
+		/* miniupnpd generates logging rdr rules */
+		static $pf_miniupnpd_output = exec_command('/sbin/pfctl -vvPsn -a "miniupnpd"');
+		$lookup_pattern = "/^@{$rulenum}\b.*/m";
+		$pf_output = $pf_miniupnpd_output;
 	} else {
-		$lookup_pattern = "^@[0-9]+[[:space:]]{$type}[[:space:]].*[[:space:]]log[[:space:]].*[[:space:]]ridentifier[[:space:]]{$trackernum}";
+		static $pf_rules_output = exec_command('/sbin/pfctl -vvPsr');
+		if ($trackernum == '0') {
+			// Find rules with a matching rule number and type.
+			$lookup_pattern = "/^@{$rulenum} {$type} .*/m";
+		} else {
+			// Find rules associated with the tracking number. Ignore the type so rules like reject are included.
+			$lookup_pattern = "/^@\d+ (?:pass|block|match) .* ridentifier {$trackernum}\b.*/m";
+		}
+		$pf_output = $pf_rules_output;
 	}
 
-	/* At the moment, miniupnpd is the only thing I know of that
-	   generates logging rdr rules */
-	unset($buffer);
-	if ($type == "rdr") {
-		$_gb = exec("/sbin/pfctl -vvPsn -a \"miniupnpd\" | /usr/bin/egrep " . escapeshellarg("^@{$rulenum}"), $buffer);
-	} else {
-		$_gb = exec("/sbin/pfctl -vvPsr | /usr/bin/egrep " . escapeshellarg($lookup_pattern), $buffer);
+	$matches = [];
+	preg_match_all($lookup_pattern, $pf_output, $matches);
+	if (empty($matches[0])) {
+		return $result;
 	}
-	if (is_array($buffer)) {
-		return $buffer[0];
+	$matches = array_map('trim', $matches[0]);
+
+	if ($trackernum == '0') {
+		// Only return the closest match.
+		$result['match'] = $matches[0];
+		return $result;
 	}
 
-	return "";
+	foreach ($matches as $idx => $match) {
+		if (str_starts_with($match, "@{$rulenum} {$type} ")) {
+			// Include the closest match.
+			$result['match'] = $match;
+			// Omit the closest match from related rules.
+			array_splice($matches, $idx, 1);
+			break;
+		}
+	}
+	if (count($matches) > 0) {
+		$result['associated'] = $matches;
+	}
+
+	return $result;
 }
 
 function buffer_rules_load() {
@@ -1362,13 +1428,58 @@ function handle_ajax() {
 					$icon_act = "fa-solid fa-check text-success";
 				}
 
-				$btn = '<i class="' . $icon_act . ' icon-pointer" title="' . $log_row['act'] . '/' . $log_row['tracker'] . '" onclick="javascript:getURL(\'status_logs_filter.php?getrulenum=' . $log_row['rulenum'] . ',' . $log_row['tracker'] . ',' . $log_row['act'] . '\', outputrule);"></i>';
+				$btn = '<i class="' . $icon_act . ' icon-pointer" title="' . $log_row['act'] . '/' . $log_row['reason'] .'/'. $log_row['tracker'] . '" onclick="javascript:getURL(\'status_logs_filter.php?getrulenum=' . $log_row['rulenum'] . ',' . $log_row['tracker'] . ',' . $log_row['act'] . '\', outputrule);"></i>';
 				$new_rules .= "{$btn}||{$log_row['time']}||{$log_row['interface']}||{$log_row['srcip']}||{$log_row['srcport']}||{$log_row['dstip']}||{$log_row['dstport']}||{$log_row['proto']}||{$log_row['version']}||" . time() . "||\n";
 			}
 		}
 		echo $new_rules;
 		exit;
 	}
+}
+
+function print_syslog_rule_action($rule) {
+	$margin = $rule['count'] ? '0em' : '0.4em';
+	$reason = htmlspecialchars($rule['reason']);
+	$tracker = htmlspecialchars($rule['tracker']);
+
+	switch ($rule['act']) {
+		case 'pass':
+		case 'block':
+		case 'rdr':
+			$action = $rule['act'];
+			break;
+		case 'unkn(%u)':
+			// "match" action is not supported - filterlog writes it as 'unkn(%u)' - override it.
+			$action = 'match';
+			break;
+		default:
+			$action = 'unknown';
+			break;
+	}
+
+	$rules = find_rule_by_number($rule['rulenum'], $rule['tracker'], $action);
+	if (isset($rules['match']) && ($action == 'block') && preg_match('/^@\d+ block return /', $rules['match'])) {
+		// "reject" action is not supported - filterlog writes it as 'block' - check the rule itself.
+		$action = 'reject';
+	}
+
+	$rules_text = 'Matched Rule:' . (isset($rules['match']) ? '<br />' . htmlspecialchars($rules['match']) : ' unavailable');
+	if (isset($rules['associated'])) {
+		$rules['associated'] = array_map('htmlspecialchars', $rules['associated']);
+		$rules_text .= "<br />Associated Rules:<br />" . implode('<br />', $rules['associated']);
+	}
+
+	$icon_class = match ($action) {
+		'pass' => 'fa-solid fa-check text-success',
+		'block' => 'fa-solid fa-times text-danger',
+		'reject' => 'fa-regular fa-hand text-warning',
+		// "match" rules and associated rules which no longer exist
+		default => 'fa-solid fa-filter'
+	};
+
+	return '<a data-toggle="popover" data-trigger="hover focus" title="' . gettext('Rule details') . '" data-content="' .
+		htmlspecialchars("Action: {$action}<br />Reason: {$reason}<br />Tracker ID: {$tracker}<br />{$rules_text}") .
+		'" data-html="true"><i style="margin-left:' . $margin . '" class="' . $icon_class . ' icon-pointer"></i></a>';
 }
 
 /* Compatibility stubs for old clog functions until packages catch up.

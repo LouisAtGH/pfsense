@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * Copyright (c) 2010 Seth Mos <seth.mos@dds.nl>
  * All rights reserved.
  *
@@ -49,8 +49,6 @@ if ($_POST['act'] == 'killgw') {
 	exit;
 }
 
-init_config_arr(array('gateways', 'gateway_group'));
-$a_gateway_groups = &$config['gateways']['gateway_group'];
 $changedesc = gettext("Gateway Groups") . ": ";
 
 $gateways_status = return_gateways_status();
@@ -79,7 +77,7 @@ display_top_tabs($tab_array);
 					</tr>
 				</thead>
 				<tbody>
-					<?php foreach ($a_gateway_groups as $gateway_group): ?>
+					<?php foreach (config_get_path('gateways/gateway_group', []) as $gateway_group): ?>
 					<tr>
 						<td>
 							<?=htmlspecialchars($gateway_group['name'])?>

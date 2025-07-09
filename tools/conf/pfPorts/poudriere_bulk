@@ -9,6 +9,7 @@ devel/gdb
 devel/git
 devel/pecl-xdebug
 devel/valgrind
+dns/coredns
 dns/%%PRODUCT_NAME%%-pkg-bind
 dns/dnstop
 editors/nano
@@ -21,6 +22,7 @@ graphics/drm-515-kmod
 mail/%%PRODUCT_NAME%%-pkg-mailreport
 net-mgmt/%%PRODUCT_NAME%%-pkg-arpwatch
 net-mgmt/%%PRODUCT_NAME%%-pkg-bandwidthd
+net-mgmt/%%PRODUCT_NAME%%-pkg-collectd
 net-mgmt/%%PRODUCT_NAME%%-pkg-darkstat
 net-mgmt/%%PRODUCT_NAME%%-pkg-lldpd
 net-mgmt/%%PRODUCT_NAME%%-pkg-net-snmp
@@ -28,12 +30,10 @@ net-mgmt/%%PRODUCT_NAME%%-pkg-nrpe
 net-mgmt/%%PRODUCT_NAME%%-pkg-snmptt
 net-mgmt/%%PRODUCT_NAME%%-pkg-softflowd
 net-mgmt/%%PRODUCT_NAME%%-pkg-Telegraf
-net-mgmt/%%PRODUCT_NAME%%-pkg-zabbix-agent5
 net-mgmt/%%PRODUCT_NAME%%-pkg-zabbix-agent6
-net-mgmt/%%PRODUCT_NAME%%-pkg-zabbix-agent64
-net-mgmt/%%PRODUCT_NAME%%-pkg-zabbix-proxy5
+net-mgmt/%%PRODUCT_NAME%%-pkg-zabbix-agent7
 net-mgmt/%%PRODUCT_NAME%%-pkg-zabbix-proxy6
-net-mgmt/%%PRODUCT_NAME%%-pkg-zabbix-proxy64
+net-mgmt/%%PRODUCT_NAME%%-pkg-zabbix-proxy7
 net-mgmt/dhcp_probe
 net-mgmt/iprange
 net-mgmt/net-snmp
@@ -45,6 +45,7 @@ net/%%PRODUCT_NAME%%-pkg-frr
 net/%%PRODUCT_NAME%%-pkg-haproxy
 net/%%PRODUCT_NAME%%-pkg-haproxy-devel
 net/%%PRODUCT_NAME%%-pkg-LADVD
+net/%%PRODUCT_NAME%%-pkg-mDNS-Bridge
 net/%%PRODUCT_NAME%%-pkg-mtr-nox11
 net/%%PRODUCT_NAME%%-pkg-ntopng
 net/%%PRODUCT_NAME%%-pkg-pfBlockerNG
@@ -61,16 +62,20 @@ net/kea
 net/keama
 net/librdkafka
 net/mcjoin
+net/mdns-bridge
 net/mosh
 net/mrouted
 net/py-speedtest-cli
 net/realtek-re-kmod
+net/speedtest-go
 net/trafshow
 net/trafshow3
 net/udpbroadcastrelay
 net/vnstat
 security/%%PRODUCT_NAME%%
 security/%%PRODUCT_NAME%%-ce
+security/snort3
+shells/zsh
 sysutils/%%PRODUCT_NAME%%-default-config
 sysutils/%%PRODUCT_NAME%%-default-config-serial
 security/%%PRODUCT_NAME%%-pkg-acme
@@ -109,7 +114,6 @@ sysutils/tmux
 sysutils/usb_modeswitch
 sysutils/vm-bhyve
 sysutils/xe-guest-utilities
-textproc/ripgrep
 www/%%PRODUCT_NAME%%-pkg-Lightsquid
 www/%%PRODUCT_NAME%%-pkg-squid
 www/%%PRODUCT_NAME%%-pkg-squidGuard

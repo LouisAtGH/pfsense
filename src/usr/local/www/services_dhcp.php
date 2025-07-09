@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * originally based on m0n0wall (http://m0n0.ch/wall)
@@ -32,13 +32,20 @@
 ##|*MATCH=services_dhcp.php*
 ##|-PRIV
 
-require_once("guiconfig.inc");
-require_once("filter.inc");
+require_once('guiconfig.inc');
+require_once('filter.inc');
 require_once('rrd.inc');
-require_once("shaper.inc");
-require_once("util.inc");
+require_once('shaper.inc');
+require_once('util.inc');
+require_once('services_dhcp.inc');
 
 global $ddnsdomainkeyalgorithms;
+
+$dnsregpolicy_values = [
+	'default' => gettext('Track server'),
+	'enable' => gettext('Enable'),
+	'disable' => gettext('Disable')
+];
 
 if (!g_get('services_dhcp_server_enable')) {
 	header("Location: /");
@@ -106,8 +113,6 @@ if (!$if || !isset($iflist[$if])) {
 
 $act = $_REQUEST['act'];
 
-$a_pools = array();
-
 if (!empty(config_get_path("dhcpd/{$if}"))) {
 	$pool = $_REQUEST['pool'];
 	if (is_numeric($_POST['pool'])) {
@@ -120,19 +125,15 @@ if (!empty(config_get_path("dhcpd/{$if}"))) {
 		exit;
 	}
 
-	init_config_arr(array('dhcpd', $if, 'pool'));
-	$a_pools = &$config['dhcpd'][$if]['pool'];
-
-	if (is_numeric($pool) && $a_pools[$pool]) {
-		$dhcpdconf = &$a_pools[$pool];
+	if (is_numeric($pool) && config_get_path("dhcpd/{$if}/pool/{$pool}")) {
+		$dhcpdconf = config_get_path("dhcpd/{$if}/pool/{$pool}");
 	} elseif ($act == "newpool") {
 		$dhcpdconf = array();
 	} else {
-		$dhcpdconf = &$config['dhcpd'][$if];
+		$dhcpdconf = config_get_path("dhcpd/{$if}", []);
 	}
 
-	init_config_arr(array('dhcpd', $if, 'staticmap'));
-	$a_maps = &$config['dhcpd'][$if]['staticmap'];
+	array_init_path($dhcpdconf, "staticmap");
 }
 
 if (is_array($dhcpdconf)) {
@@ -157,6 +158,8 @@ if (is_array($dhcpdconf)) {
 		}
 
 		$pconfig['dhcpleaseinlocaltime'] = $dhcpleaseinlocaltime;
+		$pconfig['dnsregpolicy'] = $dhcpdconf['dnsregpolicy'];
+		$pconfig['earlydnsregpolicy'] = $dhcpdconf['earlydnsregpolicy'];
 	} else {
 		// Options that exist only in pools
 		$pconfig['descr'] = $dhcpdconf['descr'];
@@ -220,6 +223,10 @@ if (is_array($dhcpdconf)) {
 		$pconfig['omapi_port'] = $dhcpdconf['omapi_port'];
 		$pconfig['omapi_key'] = $dhcpdconf['omapi_key'];
 		$pconfig['omapi_key_algorithm'] = $dhcpdconf['omapi_key_algorithm'];
+	}
+
+	if (dhcp_is_backend('kea')) {
+		$pconfig['custom_kea_config'] = base64_decode($dhcpdconf['custom_kea_config']);
 	}
 }
 
@@ -374,6 +381,14 @@ if (isset($_POST['save'])) {
 		$input_errors[] = gettext("A valid IP address must be specified for each of the DNS servers.");
 	}
 
+	if ($_POST['earlydnsregpolicy'] && !array_key_exists($_POST['earlydnsregpolicy'], $dnsregpolicy_values)) {
+		$input_errors[] = gettext("Invalid DNS Registration Policy.");
+	}
+
+	if ($_POST['earlydnsregpolicy'] && !array_key_exists($_POST['earlydnsregpolicy'], $dnsregpolicy_values)) {
+		$input_errors[] = gettext("Invalid Early DNS Registration Policy.");
+	}
+
 	if ($_POST['deftime'] && (!is_numeric($_POST['deftime']) || ($_POST['deftime'] < 60))) {
 		$input_errors[] = gettext("The default lease time must be at least 60 seconds.");
 	}
@@ -450,11 +465,15 @@ if (isset($_POST['save'])) {
 		$input_errors[] = gettext("If a mac deny list is specified, it must contain only valid partial MAC addresses.");
 	}
 
-	if (($_POST['ntp1'] && (!is_ipaddrv4($_POST['ntp1']) && !is_hostname($_POST['ntp1']))) ||
-	    ($_POST['ntp2'] && (!is_ipaddrv4($_POST['ntp2']) && !is_hostname($_POST['ntp2']))) ||
-	    ($_POST['ntp3'] && (!is_ipaddrv4($_POST['ntp3']) && !is_hostname($_POST['ntp3']))) ||
-	($_POST['ntp4'] && (!is_ipaddrv4($_POST['ntp4']) && !is_hostname($_POST['ntp4'])))) {
-		$input_errors[] = gettext("A valid IP address or hostname must be specified for the NTP servers.");
+	if (($_POST['ntp1'] && !(is_ipaddrv4($_POST['ntp1']) || (dhcp_is_backend('isc') && is_hostname($_POST['ntp1'])))) ||
+	    ($_POST['ntp2'] && !(is_ipaddrv4($_POST['ntp2']) || (dhcp_is_backend('isc') && is_hostname($_POST['ntp2'])))) ||
+	    ($_POST['ntp3'] && !(is_ipaddrv4($_POST['ntp3']) || (dhcp_is_backend('isc') && is_hostname($_POST['ntp3'])))) ||
+	    ($_POST['ntp4'] && !(is_ipaddrv4($_POST['ntp4']) || (dhcp_is_backend('isc') && is_hostname($_POST['ntp4']))))) {
+		if (dhcp_is_backend('isc')) {
+			$input_errors[] = gettext("A valid IP address or hostname must be specified for the NTP servers.");
+		} else {
+			$input_errors[] = gettext("A valid IP address must be specified for the NTP servers.");
+		}
 	}
 	if ($_POST['domain'] && (!is_domain($_POST['domain'], false, false))) {
 		$input_errors[] = gettext("A valid domain name must be specified for the DNS domain.");
@@ -483,11 +502,9 @@ if (isset($_POST['save'])) {
 	}
 
 	$noip = false;
-	if (is_array($a_maps)) {
-		foreach ($a_maps as $map) {
-			if (empty($map['ipaddr'])) {
-				$noip = true;
-			}
+	foreach (config_get_path("dhcpd/{$if}/staticmap", []) as $map) {
+		if (empty($map['ipaddr'])) {
+			$noip = true;
 		}
 	}
 
@@ -586,7 +603,7 @@ if (isset($_POST['save'])) {
 			}
 		}
 
-		foreach ($a_pools as $id => $p) {
+		foreach (config_get_path("dhcpd/{$if}/pool", []) as $id => $p) {
 			if (is_numeric($pool) && ($id == $pool)) {
 				continue;
 			}
@@ -598,15 +615,23 @@ if (isset($_POST['save'])) {
 			}
 		}
 
-		if (is_array($a_maps)) {
-			foreach ($a_maps as $map) {
-				if (empty($map['ipaddr'])) {
-					continue;
-				}
-				if (is_inrange_v4($map['ipaddr'], $_POST['range_from'], $_POST['range_to'])) {
-					$input_errors[] = sprintf(gettext("The DHCP range cannot overlap any static DHCP mappings."));
-					break;
-				}
+		foreach (config_get_path("dhcpd/{$if}/staticmap", []) as $map) {
+			if (empty($map['ipaddr'])) {
+				continue;
+			}
+			if (is_inrange_v4($map['ipaddr'], $_POST['range_from'], $_POST['range_to'])) {
+				$input_errors[] = sprintf(gettext("The DHCP range cannot overlap any static DHCP mappings."));
+				break;
+			}
+		}
+	}
+
+	/* validate custom config */
+	if (dhcp_is_backend('kea')) {
+		if (!empty($_POST['custom_kea_config'])) {
+			$json = json_decode($_POST['custom_kea_config'], true);
+			if (!is_array($json) || (json_last_error() !== JSON_ERROR_NONE)) {
+				$input_errors[] = gettext('Custom configuration is not a well formed JSON object.');
 			}
 		}
 	}
@@ -616,12 +641,11 @@ if (isset($_POST['save'])) {
 			if ($act == "newpool") {
 				$dhcpdconf = array();
 			} else {
-				config_init_path("dhcpd/{$if}");
-				$dhcpdconf = config_get_path("dhcpd/{$if}");
+				$dhcpdconf = config_get_path("dhcpd/{$if}", []);
 			}
 		} else {
-			if (is_array($a_pools[$pool])) {
-				$dhcpdconf = $a_pools[$pool];
+			if (is_array(config_get_path("dhcpd/{$if}/pool/{$pool}"))) {
+				$dhcpdconf = config_get_path("dhcpd/{$if}/pool/{$pool}");
 			} else {
 				// Someone specified a pool but it doesn't exist. Punt.
 				header("Location: services_dhcp.php");
@@ -667,6 +691,9 @@ if (isset($_POST['save'])) {
 					config_del_path("dhcpd/{$dhcpdifkey}/dhcpleaseinlocaltime");
 				}
 			}
+
+			$dhcpdconf['dnsregpolicy'] = $_POST['dnsregpolicy'];
+			$dhcpdconf['earlydnsregpolicy'] = $_POST['earlydnsregpolicy'];
 		} else {
 			// Options that exist only in pools
 			$dhcpdconf['descr'] = $_POST['descr'];
@@ -793,10 +820,14 @@ if (isset($_POST['save'])) {
 			$dhcpdconf['omapi_key_algorithm'] = $_POST['omapi_key_algorithm'];
 		}
 
-		if (is_numeric($pool) && is_array($a_pools[$pool])) {
-			$a_pools[$pool] = $dhcpdconf;
+		if (dhcp_is_backend('kea')) {
+			$dhcpdconf['custom_kea_config'] = base64_encode($_POST['custom_kea_config']);
+		}
+
+		if (is_numeric($pool) && is_array(config_get_path("dhcpd/{$if}/pool/{$pool}"))) {
+			config_set_path("dhcpd/{$if}/pool/{$pool}", $dhcpdconf);
 		} elseif ($act == "newpool") {
-			$a_pools[] = $dhcpdconf;
+			config_set_path("dhcpd/{$if}/pool/", $dhcpdconf);
 		} else {
 			config_set_path("dhcpd/{$if}", $dhcpdconf);
 		}
@@ -814,71 +845,12 @@ if (isset($_POST['save'])) {
 
 if (isset($_POST['apply'])) {
 	$changes_applied = true;
-	$retval = 0;
-	$retvaldhcp = 0;
-	$retvaldns = 0;
-	/* dnsmasq_configure calls dhcpd_configure */
-	/* no need to restart dhcpd twice */
-	if (config_path_enabled('dnsmasq') &&
-	    config_path_enabled('dnsmasq', 'regdhcpstatic') &&
-	    dhcp_is_backend('isc')) {
-		$retvaldns |= services_dnsmasq_configure();
-		if ($retvaldns == 0) {
-			clear_subsystem_dirty('hosts');
-			clear_subsystem_dirty('dhcpd');
-		}
-	} elseif (config_path_enabled('unbound') &&
-		   config_path_enabled('unbound', 'regdhcpstatic') &&
-		   dhcp_is_backend('isc')) {
-		$retvaldns |= services_unbound_configure();
-		if ($retvaldns == 0) {
-			clear_subsystem_dirty('unbound');
-
-			clear_subsystem_dirty('hosts');
-			clear_subsystem_dirty('dhcpd');
-		}
-	} else {
-		$retvaldhcp |= services_dhcpd_configure();
-		if ($retvaldhcp == 0) {
-			clear_subsystem_dirty('dhcpd');
-		}
-	}
-	/* BIND package - Bug #3710 */
-	if (!function_exists('is_package_installed')) {
-		require_once('pkg-utils.inc');
-	}
-	if (is_package_installed('pfSense-pkg-bind') &&
-	    config_path_enabled('installedpackages/bind/config/0', 'enable_bind') &&
-	    dhcp_is_backend('isc')) {
-		$reloadbind = false;
-		$bindzone = config_get_path('installedpackages/bindzone/config', []);
-
-		for ($x = 0; $x < sizeof($bindzone); $x++) {
-			$zone = $bindzone[$x];
-			if ($zone['regdhcpstatic'] == 'on') {
-				$reloadbind = true;
-				break;
-			}
-		}
-		if ($reloadbind === true) {
-			if (file_exists("/usr/local/pkg/bind.inc")) {
-				require_once("/usr/local/pkg/bind.inc");
-				bind_sync();
-			}
-		}
-	}
-	if ($dhcpd_enable_changed) {
-		$retvalfc |= filter_configure();
-	}
-
-	if ($retvaldhcp == 1 || $retvaldns == 1 || $retvalfc == 1) {
-		$retval = 1;
-	}
+	$retval = dhcp_apply_changes();
 }
 
 if ($act == "delpool") {
-	if ($a_pools[$_POST['id']]) {
-		unset($a_pools[$_POST['id']]);
+	if (config_get_path("dhcpd/{$if}/pool/{$_POST['id']}")) {
+		config_del_path("dhcpd/{$if}/pool/{$_POST['id']}");
 		write_config("DHCP Server pool deleted");
 		mark_subsystem_dirty('dhcpd');
 		header("Location: services_dhcp.php?if={$if}");
@@ -887,12 +859,12 @@ if ($act == "delpool") {
 }
 
 if ($act == "del") {
-	if (isset($a_maps[$_POST['id']])) {
+	if (config_get_path("dhcpd/{$if}/staticmap/{$_POST['id']}") !== null) {
 		/* Remove static ARP entry, if necessary */
-		if (isset($a_maps[$_POST['id']]['arp_table_static_entry'])) {
-			mwexec("/usr/sbin/arp -d " . escapeshellarg($a_maps[$_POST['id']]['ipaddr']));
+		if (config_get_path("dhcpd/{$if}/staticmap/{$_POST['id']}/arp_table_static_entry") !== null) {
+			mwexec("/usr/sbin/arp -d " . escapeshellarg(config_get_path("dhcpd/{$if}/staticmap/{$_POST['id']}/ipaddr")));
 		}
-		unset($a_maps[$_POST['id']]);
+		config_del_path("dhcpd/{$if}/staticmap/{$_POST['id']}");
 		write_config("DHCP Server static map deleted");
 		if (config_path_enabled("dhcpd/{$if}")) {
 			mark_subsystem_dirty('dhcpd');
@@ -908,9 +880,9 @@ if ($act == "del") {
 
 // Build an HTML table that can be inserted into a Form_StaticText element
 function build_pooltable() {
-	global $a_pools, $if;
+	global $if;
 
-	$pooltbl =	'<div class="table-responsive">';
+	$pooltbl =	'<div class="contains-table table-responsive">';
 	$pooltbl .=		'<table class="table table-striped table-hover table-condensed">';
 	$pooltbl .=			'<thead>';
 	$pooltbl .=				'<tr>';
@@ -922,27 +894,25 @@ function build_pooltable() {
 	$pooltbl .=			'</thead>';
 	$pooltbl .=			'<tbody>';
 
-	if (is_array($a_pools)) {
-		$i = 0;
-		foreach ($a_pools as $poolent) {
-			if (!empty($poolent['range']['from']) && !empty($poolent['range']['to'])) {
-				$pooltbl .= '<tr>';
-				$pooltbl .= '<td ondblclick="document.location=\'services_dhcp.php?if=' . htmlspecialchars($if) . '&pool=' . $i . '\';">' .
-							htmlspecialchars($poolent['range']['from']) . '</td>';
+	$i = 0;
+	foreach (config_get_path("dhcpd/{$if}/pool", []) as $poolent) {
+		if (!empty($poolent['range']['from']) && !empty($poolent['range']['to'])) {
+			$pooltbl .= '<tr>';
+			$pooltbl .= '<td ondblclick="document.location=\'services_dhcp.php?if=' . htmlspecialchars($if) . '&pool=' . $i . '\';">' .
+						htmlspecialchars($poolent['range']['from']) . '</td>';
 
-				$pooltbl .= '<td ondblclick="document.location=\'services_dhcp.php?if=' . htmlspecialchars($if) . '&pool=' . $i . '\';">' .
-							htmlspecialchars($poolent['range']['to']) . '</td>';
+			$pooltbl .= '<td ondblclick="document.location=\'services_dhcp.php?if=' . htmlspecialchars($if) . '&pool=' . $i . '\';">' .
+						htmlspecialchars($poolent['range']['to']) . '</td>';
 
-				$pooltbl .= '<td ondblclick="document.location=\'services_dhcp.php?if=' . htmlspecialchars($if) . '&pool=' . $i . '\';">' .
-							htmlspecialchars($poolent['descr']) . '</td>';
+			$pooltbl .= '<td ondblclick="document.location=\'services_dhcp.php?if=' . htmlspecialchars($if) . '&pool=' . $i . '\';">' .
+						htmlspecialchars($poolent['descr']) . '</td>';
 
-				$pooltbl .= '<td><a class="fa-solid fa-pencil" title="'. gettext("Edit pool") . '" href="services_dhcp.php?if=' . htmlspecialchars($if) . '&pool=' . $i . '"></a>';
+			$pooltbl .= '<td><a class="fa-solid fa-pencil" title="'. gettext("Edit pool") . '" href="services_dhcp.php?if=' . htmlspecialchars($if) . '&pool=' . $i . '"></a>';
 
-				$pooltbl .= ' <a class="fa-solid fa-trash-can" title="'. gettext("Delete pool") . '" href="services_dhcp.php?if=' . htmlspecialchars($if) . '&act=delpool&id=' . $i . '" usepost></a></td>';
-				$pooltbl .= '</tr>';
-			}
-		$i++;
+			$pooltbl .= ' <a class="fa-solid fa-trash-can text-danger" title="'. gettext("Delete pool") . '" href="services_dhcp.php?if=' . htmlspecialchars($if) . '&act=delpool&id=' . $i . '" usepost></a></td>';
+			$pooltbl .= '</tr>';
 		}
+		$i++;
 	}
 
 	$pooltbl .=			'</tbody>';
@@ -953,7 +923,7 @@ function build_pooltable() {
 }
 
 $pgtitle = array(gettext("Services"), gettext("DHCP Server"));
-$pglinks = array("", "services_dhcp.php");
+$pglinks = array("", "services_dhcp_settings.php");
 
 if (!empty($if) && isset($iflist[$if])) {
 	$pgtitle[] = $iflist[$if];
@@ -973,6 +943,10 @@ if (dhcp_is_backend('kea')) {
 }
 
 include('head.inc');
+
+if (config_path_enabled('dhcrelay')) {
+	print_info_box(gettext('DHCP Relay is currently enabled. DHCP Server canot be enabled while the DHCP Relay is enabled on any interface.'), 'danger', false);
+}
 
 if ($input_errors) {
 	print_input_errors($input_errors);
@@ -994,8 +968,12 @@ $tabscounter = 0;
 $i = 0;
 $have_small_subnet = false;
 
+if (dhcp_is_backend('kea')) {
+	$tab_array[] = [gettext('Settings'), false, 'services_dhcp_settings.php'];
+}
+
 foreach ($iflist as $ifent => $ifname) {
-	$oc = config_get_path("interfaces/{$ifent}");
+	$oc = config_get_path("interfaces/{$ifent}", []);
 
 	/* Not static IPv4 or subnet >= 31 */
 	if ($oc['subnet'] >= 31) {
@@ -1031,9 +1009,13 @@ if ($tabscounter == 0) {
 
 display_top_tabs($tab_array);
 
+if (is_null($pconfig) || !is_array($pconfig)) {
+	$pconfig = [];
+}
+
 $form = new Form();
 
-$section = new Form_Section(gettext('General DHCP Options'));
+$section = new Form_Section(gettext('General Settings'));
 
 $section->addInput(new Form_StaticText(
 	gettext('DHCP Backend'),
@@ -1045,22 +1027,24 @@ $section->addInput(new Form_StaticText(
 ));
 
 if (!is_numeric($pool) && !($act == "newpool")) {
+	$kea_section = 'subnet';
 	if (config_path_enabled('dhcrelay')) {
 		$section->addInput(new Form_Checkbox(
 			'enable',
-			'Enable',
+			gettext('Enable'),
 			gettext("DHCP Relay is currently enabled. DHCP Server canot be enabled while the DHCP Relay is enabled on any interface."),
 			$pconfig['enable']
 		))->setAttribute('disabled', true);
 	} else {
 		$section->addInput(new Form_Checkbox(
 			'enable',
-			'Enable',
-			sprintf(gettext("Enable DHCP server on %s interface"), htmlspecialchars($iflist[$if])),
+			gettext('Enable'),
+			sprintf(gettext("Enable DHCP server on %s interface"), $iflist[$if]),
 			$pconfig['enable']
 		));
 	}
 } else {
+	$kea_section = 'pool';
 	print_info_box(gettext('Editing pool-specific options. To return to the Interface, click its tab above.'), 'info', false);
 }
 
@@ -1071,7 +1055,7 @@ $section->addInput(new Form_Checkbox(
 	'Ignore BOOTP queries',
 	$pconfig['ignorebootp']
 ));
-endif;
+endif; /* dhcp_is_backend('isc') */
 
 $section->addInput(new Form_Select(
 	'denyunknown',
@@ -1094,7 +1078,7 @@ $section->addInput(new Form_Checkbox(
 	'Ignore denied clients rather than reject',
 	$pconfig['nonak']
 ))->setHelp(gettext('This option is not compatible with failover and cannot be enabled when a Failover Peer IP address is configured.'));
-endif;
+endif; /* dhcp_is_backend('isc') */
 
 if (dhcp_is_backend('isc') ||
     (dhcp_is_backend('kea') && (!is_numeric($pool) && !($act === 'newpool')))):
@@ -1104,6 +1088,21 @@ $section->addInput(new Form_Checkbox(
 	gettext('Do not record a unique identifier (UID) in client lease data if present in the client DHCP request'),
 	$pconfig['ignoreclientuids']
 ))->setHelp(gettext('This option may be useful when a client can dual boot using different client identifiers but the same hardware (MAC) address.  Note that the resulting server behavior violates the official DHCP specification.'));
+endif;
+
+if (dhcp_is_backend('kea') && (!is_numeric($pool) && !($act === 'newpool'))):
+	$section->addInput(new Form_Select(
+		'dnsregpolicy',
+		gettext('DNS Registration'),
+		array_get_path($pconfig, 'dnsregpolicy', 'default'),
+		$dnsregpolicy_values
+	))->setHelp(gettext('Optionally overides the DHCP server default DNS registration policy to force a specific policy.'));
+	$section->addInput(new Form_Select(
+		'earlydnsregpolicy',
+		gettext('Early DNS Registration'),
+		array_get_path($pconfig, 'earlydnsregpolicy', 'default'),
+		$dnsregpolicy_values
+	))->setHelp(gettext('Optionally overides the DHCP server default early DNS registration policy to force a specific policy.'));
 endif;
 
 if (is_numeric($pool) || ($act == "newpool")) {
@@ -1142,7 +1141,7 @@ if (is_numeric($pool) || ($act === 'newpool')) {
 		$ranges[] = $subnet_range;
 	}
 
-	foreach ($a_pools as $p) {
+	foreach (config_get_path("dhcpd/{$if}/pool", []) as $p) {
 		$pa = array_get_path($p, 'range', []);
 		if (!empty($pa)) {
 			$pa['descr'] = trim($p['descr']);
@@ -1187,7 +1186,7 @@ $section->add($group);
 
 if (!is_numeric($pool) && !($act == "newpool")) {
 	$has_pools = false;
-	if (is_array($a_pools) && (count($a_pools) > 0)) {
+	if (isset($if) && (count(config_get_path("dhcpd/{$if}/pool", [])) > 0)) {
 		$section->addInput(new Form_StaticText(
 			gettext('Additional Pools'),
 			build_pooltable()
@@ -1198,7 +1197,7 @@ if (!is_numeric($pool) && !($act == "newpool")) {
 	$btnaddpool = new Form_Button(
 		'btnaddpool',
 		gettext('Add Address Pool'),
-		'services_dhcp.php?if=' . htmlspecialchars($if) . '&act=newpool',
+		'services_dhcp.php?if=' . $if . '&act=newpool',
 		'fa-solid fa-plus'
 	);
 	$btnaddpool->addClass('btn-success');
@@ -1396,16 +1395,16 @@ if (dhcp_is_backend('isc')):
 	))->setHelp('Leave blank to disable. Enter the interface IP address of the other firewall (failover peer) in this subnet. Firewalls must be using CARP. ' .
 			'Advertising skew of the CARP VIP on this interface determines whether the DHCP daemon is Primary or Secondary. ' .
 			'Ensure the advertising skew for the VIP on one firewall is &lt; 20 and the other is &gt; 20.');
-
+endif; /* dhcp_is_backend('isc') */
 	$section->addInput(new Form_Checkbox(
 		'staticarp',
-		'Static ARP',
-		'Enable Static ARP entries',
+		gettext('Static ARP'),
+		gettext('Enable Static ARP'),
 		$pconfig['staticarp']
 	))->setHelp('Restricts communication with the firewall to only hosts listed in static mappings containing both IP addresses and MAC addresses. ' .
 			'No other hosts will be able to communicate with the firewall on this interface. ' .
 			'This behavior is enforced even when DHCP server is disabled.');
-
+if (dhcp_is_backend('isc')):
 	$section->addInput(new Form_Checkbox(
 		'dhcpleaseinlocaltime',
 		'Time format change',
@@ -1420,16 +1419,14 @@ if (dhcp_is_backend('isc')):
 		'Enable monitoring graphs for DHCP lease statistics',
 		$pconfig['statsgraph']
 	))->setHelp('Enable this to add DHCP leases statistics to the Monitoring graphs. Disabled by default.');
-endif;
 
-if (dhcp_is_backend('isc')):
 	$section->addInput(new Form_Checkbox(
 		'disablepingcheck',
 		'Ping check',
 		'Disable ping check',
 		$pconfig['disablepingcheck']
 	))->setHelp('When enabled dhcpd sends a ping to the address being assigned, and if no response has been heard, it assigns the address. Enabled by default.');
-endif;
+endif; /* dhcp_is_backend('isc') */
 }
 
 if (dhcp_is_backend('isc')):
@@ -1479,14 +1476,12 @@ $group->add(new Form_IpAddress(
 	'BOTH'
 ))->setHelp('Primary domain name server IPv4 address.');
 
-if (dhcp_is_backend('kea')):
 $group->add(new Form_Input(
 	'ddnsdomainprimaryport',
 	'53',
 	'text',
 	$pconfig['ddnsdomainprimaryport'],
 ))->setHelp(gettext('The port on which the server listens for DDNS requests.'));
-endif;
 
 $section->add($group);
 
@@ -1498,25 +1493,21 @@ $group->add(new Form_IpAddress(
 	'BOTH'
 ))->setHelp(gettext('Secondary domain name server IPv4 address.'));
 
-if (dhcp_is_backend('kea')):
 $group->add(new Form_Input(
 	'ddnsdomainsecondaryport',
 	'53',
 	'text',
 	$pconfig['ddnsdomainsecondaryport'],
 ))->setHelp(gettext('The port on which the server listens for DDNS requests.'));
-endif;
 
 $section->add($group);
 
-if (dhcp_is_backend('isc')):
 $section->addInput(new Form_Input(
 	'ddnsdomainkeyname',
 	gettext('DNS Domain Key'),
 	'text',
 	$pconfig['ddnsdomainkeyname']
 ))->setHelp(gettext('Dynamic DNS domain key name which will be used to register client names in the DNS server.'));
-endif;
 
 $section->addInput(new Form_Select(
 	'ddnsdomainkeyalgorithm',
@@ -1545,7 +1536,7 @@ $section->addInput(new Form_Select(
 	    'Allow prevents DHCP from updating Forward entries, Deny indicates that DHCP will ' .
 	    'do the updates and the client should not, Ignore specifies that DHCP will do the ' .
 	    'update and the client can also attempt the update usually using a different domain name.'));
-endif;
+endif; /* dhcp_is_backend('isc') */
 
 // Advanced MAC
 $btnadv = new Form_Button(
@@ -1687,7 +1678,7 @@ $section->addInput(new Form_Input(
 // Advanced Network Booting options
 $btnadv = new Form_Button(
 	'btnadvnwkboot',
-	'Display Advanced',
+	gettext('Display Advanced'),
 	null,
 	'fa-solid fa-cog'
 );
@@ -1770,7 +1761,7 @@ if (dhcp_is_backend('isc')):
 // Advanced Additional options
 $btnadv = new Form_Button(
 	'btnadvopts',
-	'Display Advanced',
+	gettext('Display Advanced'),
 	null,
 	'fa-solid fa-cog'
 );
@@ -1787,7 +1778,6 @@ $form->add($section);
 $section = new Form_Section(gettext('Custom DHCP Options'));
 $section->addClass('adnlopts');
 
-if (dhcp_is_backend('isc')):
 if (!$pconfig['numberoptions']) {
 	$pconfig['numberoptions'] = array();
 	$pconfig['numberoptions']['item']  = array(array('number' => '', 'type' => 'text', 'value' => ''));
@@ -1846,7 +1836,6 @@ foreach ($pconfig['numberoptions']['item'] as $item) {
 
 	$counter++;
 }
-endif; /* dhcp_is_backend(isc') */
 
 $group = new Form_Group(null);
 $group->add(new Form_Button(
@@ -1857,9 +1846,19 @@ $group->add(new Form_Button(
 ))->addClass('btn-success')
   ->setHelp(gettext('Enter the DHCP option number, type and the value for each item to include in the DHCP lease information.'));
 $section->add($group);
-endif;
+endif; /* dhcp_is_backend(isc') */
 
 $form->add($section);
+
+if (dhcp_is_backend('kea')):
+$section = new Form_Section(gettext('Custom Configuration'));
+$section->addInput(new Form_Textarea(
+	'custom_kea_config',
+	gettext('JSON Configuration'),
+	array_get_path($pconfig, 'custom_kea_config')
+))->setWidth(8)->setHelp(gettext('JSON to be merged into the "%1$s" section of the generated Kea DHCPv4 configuration.%2$sThe input must be a well formed JSON object and should not include the "%1$s" key itself.'), $kea_section, '<br/>');
+$form->add($section);
+endif;
 
 if ($act == "newpool") {
 	$form->addGlobal(new Form_Input(
@@ -1894,12 +1893,10 @@ if (!is_numeric($pool) && !($act == "newpool")) {
 
 	// Decide whether display of the Client Id column is needed.
 	$got_cid = false;
-	if (is_array($a_maps)) {
-		foreach ($a_maps as $map) {
-			if (!empty($map['cid'])) {
-				$got_cid = true;
-				break;
-			}
+	foreach (config_get_path("dhcpd/{$if}/staticmap", []) as $map) {
+		if (!empty($map['cid'])) {
+			$got_cid = true;
+			break;
 		}
 	}
 ?>
@@ -1913,69 +1910,47 @@ if (!is_numeric($pool) && !($act == "newpool")) {
 			<table class="table table-striped table-hover table-condensed sortable-theme-bootstrap" data-sortable>
 				<thead>
 					<tr>
-						<th><?=gettext("Static ARP")?></th>
-						<th><?=gettext("MAC address")?></th>
-<?php
-	if ($got_cid):
-?>
-						<th><?=gettext("Client Id")?></th>
-<?php
-	endif;
-?>
-						<th><?=gettext("IP address")?></th>
+						<th><!-- status icons --></th>
+						<th><?=gettext("IP Address")?></th>
 						<th><?=gettext("Hostname")?></th>
+						<th><?=gettext("MAC Address")?></th>
 						<th><?=gettext("Description")?></th>
-						<th></th>
+						<th><?=gettext("Actions")?></th>
 					</tr>
 				</thead>
 <?php
-	if (is_array($a_maps)) {
-		$i = 0;
+	$i = 0;
 ?>
-				<tbody>
+			<tbody>
 <?php
-		foreach ($a_maps as $mapent) {
+	foreach (config_get_path("dhcpd/{$if}/staticmap", []) as $mapent) {
 ?>
-					<tr>
-						<td class="text-center" ondblclick="document.location='services_dhcp_edit.php?if=<?=htmlspecialchars($if)?>&amp;id=<?=$i?>';">
-							<?php if (isset($mapent['arp_table_static_entry'])): ?>
-								<i class="fa-solid fa-check"></i>
-							<?php endif; ?>
-						</td>
-						<td ondblclick="document.location='services_dhcp_edit.php?if=<?=htmlspecialchars($if)?>&amp;id=<?=$i?>';">
-							<?=htmlspecialchars($mapent['mac'])?>
-						</td>
-<?php
-			if ($got_cid):
-?>
-						<td ondblclick="document.location='services_dhcp_edit.php?if=<?=htmlspecialchars($if)?>&amp;id=<?=$i?>';">
-							<?=htmlspecialchars($mapent['cid'])?>
-						</td>
-<?php
-			endif;
-?>
-						<td ondblclick="document.location='services_dhcp_edit.php?if=<?=htmlspecialchars($if)?>&amp;id=<?=$i?>';">
-							<?=htmlspecialchars($mapent['ipaddr'])?>
-						</td>
-						<td ondblclick="document.location='services_dhcp_edit.php?if=<?=htmlspecialchars($if)?>&amp;id=<?=$i?>';">
-							<?=htmlspecialchars($mapent['hostname'])?>
-						</td>
-						<td ondblclick="document.location='services_dhcp_edit.php?if=<?=htmlspecialchars($if)?>&amp;id=<?=$i?>';">
-							<?=htmlspecialchars($mapent['descr'])?>
-						</td>
-						<td>
-							<a class="fa-solid fa-pencil"	title="<?=gettext('Edit static mapping')?>"	href="services_dhcp_edit.php?if=<?=htmlspecialchars($if)?>&amp;id=<?=$i?>"></a>
-							<a class="fa-solid fa-trash-can"	title="<?=gettext('Delete static mapping')?>"	href="services_dhcp.php?if=<?=htmlspecialchars($if)?>&amp;act=del&amp;id=<?=$i?>" usepost></a>
-						</td>
-					</tr>
+				<tr ondblclick="document.location='services_dhcp_edit.php?if=<?=htmlspecialchars($if)?>&amp;id=<?=$i?>';">
+					<td>
+						<?=dhcp_static_mapping_icons($dhcpdconf, $mapent)?>
+					</td>
+					<td>
+						<?=htmlspecialchars($mapent['ipaddr'])?>
+					</td>
+					<td>
+						<?=htmlspecialchars($mapent['hostname'])?>
+					</td>
+					<td <?php if ($mapent['cid']): ?>style="cursor: help;" data-toggle="popover" data-container="body" data-trigger="hover focus" data-content="<?=gettext('Client ID')?>: <span class=&quot;cid&quot;><?=$mapent['cid']?></span>" data-html="true" data-original-title="<?=gettext('DHCP Client Information')?>"<?php endif; ?>>
+						<?=htmlspecialchars($mapent['mac'])?>
+					</td>
+					<td>
+						<?=htmlspecialchars($mapent['descr'])?>
+					</td>
+					<td>
+						<a class="fa-solid fa-pencil" title="<?=gettext('Edit static mapping')?>"	href="services_dhcp_edit.php?if=<?=htmlspecialchars($if)?>&amp;id=<?=$i?>"></a>
+						<a class="fa-solid fa-trash-can text-danger" title="<?=gettext('Delete static mapping')?>"	href="services_dhcp.php?if=<?=htmlspecialchars($if)?>&amp;act=del&amp;id=<?=$i?>" usepost></a>
+					</td>
+				</tr>
 <?php
 		$i++;
-		}
-?>
-				</tbody>
-<?php
 	}
 ?>
+			</tbody>
 		</table>
 	</div>
 </div>
@@ -2037,7 +2012,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-		$('#btnadvdns').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnadvdns').children();
+		$('#btnadvdns').text(text).prepend(children);
 	}
 
 	$('#btnadvdns').click(function(event) {
@@ -2072,7 +2048,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-		$('#btnadvmac').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnadvmac').children();
+		$('#btnadvmac').text(text).prepend(children);
 	}
 
 	$('#btnadvmac').click(function(event) {
@@ -2109,7 +2086,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-		$('#btnadvntp').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnadvntp').children();
+		$('#btnadvntp').text(text).prepend(children);
 	}
 
 	$('#btnadvntp').click(function(event) {
@@ -2143,7 +2121,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-		$('#btnadvtftp').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnadvtftp').children();
+		$('#btnadvtftp').text(text).prepend(children);
 	}
 
 	$('#btnadvtftp').click(function(event) {
@@ -2177,7 +2156,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-		$('#btnadvldap').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnadvldap').children();
+		$('#btnadvldap').text(text).prepend(children);
 	}
 
 	$('#btnadvldap').click(function(event) {
@@ -2212,7 +2192,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-		$('#btnadvopts').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnadvopts').children();
+		$('#btnadvopts').text(text).prepend(children);
 	}
 
 	$('#btnadvopts').click(function(event) {
@@ -2254,7 +2235,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-		$('#btnadvnwkboot').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnadvnwkboot').children();
+		$('#btnadvnwkboot').text(text).prepend(children);
 	}
 
 	$('#btnadvnwkboot').click(function(event) {

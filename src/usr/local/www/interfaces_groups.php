@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,19 +31,16 @@
 require_once("guiconfig.inc");
 require_once("functions.inc");
 
-init_config_arr(array('ifgroups', 'ifgroupentry'));
-$a_ifgroups = &$config['ifgroups']['ifgroupentry'];
-
 if ($_POST['act'] == "del") {
-	if ($a_ifgroups[$_POST['id']]) {
-		$members = explode(" ", $a_ifgroups[$_POST['id']]['members']);
+	if (is_numericint($_POST['id']) && config_get_path("ifgroups/ifgroupentry/{$_POST['id']}")) {
+		$members = explode(" ", config_get_path("ifgroups/ifgroupentry/{$_POST['id']}/members"));
 		foreach ($members as $ifs) {
 			$realif = get_real_interface($ifs);
 			if ($realif) {
-				mwexec("/sbin/ifconfig {$realif} -group " . $a_ifgroups[$_POST['id']]['ifname']);
+				mwexec("/sbin/ifconfig {$realif} -group " . config_get_path("ifgroups/ifgroupentry/{$_POST['id']}/ifname"));
 			}
 		}
-		unset($a_ifgroups[$_POST['id']]);
+		config_del_path("ifgroups/ifgroupentry/{$_POST['id']}");
 		write_config("Interface Group deleted");
 		header("Location: interfaces_groups.php");
 		exit;
@@ -82,7 +79,7 @@ display_top_tabs($tab_array);
 					</tr>
 				</thead>
 				<tbody>
-<?php foreach ($a_ifgroups as $i => $ifgroupentry): ?>
+<?php foreach (config_get_path('ifgroups/ifgroupentry', []) as $i => $ifgroupentry): ?>
 					<tr>
 						<td>
 							<?=htmlspecialchars($ifgroupentry['ifname']); ?>
@@ -98,7 +95,7 @@ display_top_tabs($tab_array);
 
 		unset($iflist);
 		$memberses = implode(", ", $memberses_arr);
-		echo $memberses;
+		echo htmlspecialchars($memberses);
 		if (count($members_arr) >= 10) {
 			echo '&hellip;';
 		}

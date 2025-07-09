@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * originally based on m0n0wall (http://m0n0.ch/wall)
@@ -65,6 +65,8 @@ $pconfig['logdefaultblock'] = !config_path_enabled('syslog', 'nologdefaultblock'
 $pconfig['logdefaultpass'] = config_path_enabled('syslog', 'nologdefaultpass');
 $pconfig['logbogons'] = !config_path_enabled('syslog', 'nologbogons');
 $pconfig['logprivatenets'] = !config_path_enabled('syslog', 'nologprivatenets');
+$pconfig['loglinklocal4'] = !config_path_enabled('syslog', 'nologlinklocal4');
+$pconfig['logsnort2c'] = !config_path_enabled('syslog', 'nologsnort2c');
 $pconfig['lognginx'] = !config_path_enabled('syslog', 'nolognginx');
 $pconfig['rawfilter'] = config_path_enabled('syslog', 'rawfilter');
 $pconfig['filterdescriptions'] = config_get_path('syslog/filterdescriptions');
@@ -91,12 +93,25 @@ function is_valid_syslog_server($target) {
 		|| is_hostnamewithport($target));
 }
 
+phpsession_begin();
+$guiuser = getUserEntry($_SESSION['Username']);
+$read_only = (is_array($guiuser) && userHasPrivilege($guiuser['item'], "user-config-readonly"));
+phpsession_end();
+
 if ($_POST['resetlogs'] == gettext("Reset Log Files")) {
-	clear_all_log_files(true);
-	$reset_msg = gettext("The log files have been reset.");
+	if (!$read_only) {
+		clear_all_log_files(true);
+		$reset_msg = gettext("The log files have been reset.");
+	} else {
+		$input_errors = array(gettext("Insufficient privileges to make the requested change (read only)."));
+	}
 } elseif ($_POST) {
 	unset($input_errors);
 	$pconfig = $_POST;
+
+	if ($read_only) {
+		$input_errors[] = gettext("Insufficient privileges to make the requested change (read only).");
+	}
 
 	/* input validation */
 	if ($_POST['enable'] && !is_valid_syslog_server($_POST['remoteserver'])) {
@@ -137,7 +152,6 @@ if ($_POST['resetlogs'] == gettext("Reset Log Files")) {
 	}
 
 	if (!$input_errors) {
-		init_config_arr(array('syslog'));
 		config_set_path('syslog/reverse', $_POST['reverse'] ? true : false);
 		config_set_path('syslog/nentries', (int)$_POST['nentries']);
 		$pconfig['nentries'] = config_get_path('syslog/nentries');
@@ -191,11 +205,15 @@ if ($_POST['resetlogs'] == gettext("Reset Log Files")) {
 		$oldnologdefaultpass = config_path_enabled('syslog', 'nologdefaultpass');
 		$oldnologbogons = config_path_enabled('syslog', 'nologbogons');
 		$oldnologprivatenets = config_path_enabled('syslog', 'nologprivatenets');
+		$oldnologlinklocal4 = config_path_enabled('syslog', 'nologlinklocal4');
+		$oldnologsnort2c = config_path_enabled('syslog', 'nologsnort2c');
 		$oldnolognginx = config_path_enabled('syslog', 'nolognginx');
 		config_set_path('syslog/nologdefaultblock', $_POST['logdefaultblock'] ? false : true);
 		config_set_path('syslog/nologdefaultpass', $_POST['logdefaultpass'] ? true : false);
 		config_set_path('syslog/nologbogons', $_POST['logbogons'] ? false : true);
 		config_set_path('syslog/nologprivatenets', $_POST['logprivatenets'] ? false : true);
+		config_set_path('syslog/nologlinklocal4', $_POST['loglinklocal4'] ? false : true);
+		config_set_path('syslog/nologsnort2c', $_POST['logsnort2c'] ? false : true);
 		config_set_path('syslog/nolognginx', $_POST['lognginx'] ? false : true);
 		config_set_path('syslog/rawfilter', $_POST['rawfilter'] ? true : false);
 
@@ -215,11 +233,14 @@ if ($_POST['resetlogs'] == gettext("Reset Log Files")) {
 
 		$changes_applied = true;
 		$retval = 0;
+		system_sshguard_stop();
 		system_syslogd_start();
 		if (($oldnologdefaultblock !== config_path_enabled('syslog', 'nologdefaultblock')) ||
 		    ($oldnologdefaultpass !== config_path_enabled('syslog', 'nologdefaultpass')) ||
 		    ($oldnologbogons !== config_path_enabled('syslog', 'nologbogons')) ||
-		    ($oldnologprivatenets !== config_path_enabled('syslog', 'nologprivatenets'))) {
+		    ($oldnologprivatenets !== config_path_enabled('syslog', 'nologprivatenets')) ||
+		    ($oldnologlinklocal4 !== config_path_enabled('syslog', 'nologlinklocal4')) ||
+		    ($oldnologsnort2c !== config_path_enabled('syslog', 'nologsnort2c'))) {
 			$retval |= filter_configure();
 		}
 
@@ -231,7 +252,7 @@ if ($_POST['resetlogs'] == gettext("Reset Log Files")) {
 			$extra_save_msg = gettext("WebGUI process is restarting.");
 		}
 
-		filter_pflog_start(true);
+		filter_pflog_start();
 	}
 }
 
@@ -303,41 +324,6 @@ $section->addInput(new Form_Input(
 ))->setHelp('This is only the number of log entries displayed in the GUI. It does not affect how many entries are contained in the actual log files.');
 
 $section->addInput(new Form_Checkbox(
-	'logdefaultblock',
-	'Log firewall default blocks',
-	'Log packets matched from the default block rules in the ruleset',
-	$pconfig['logdefaultblock']
-))->setHelp('Log packets that are %1$sblocked%2$s by the implicit default block rule. - Per-rule logging options are still respected.', '<strong>', '</strong>');
-
-$section->addInput(new Form_Checkbox(
-	'logdefaultpass',
-	null,
-	'Log packets matched from the default pass rules put in the ruleset',
-	$pconfig['logdefaultpass']
-))->setHelp('Log packets that are %1$sallowed%2$s by the implicit default pass rule. - Per-rule logging options are still respected. ', '<strong>', '</strong>');
-
-$section->addInput(new Form_Checkbox(
-	'logbogons',
-	null,
-	'Log packets blocked by \'Block Bogon Networks\' rules',
-	$pconfig['logbogons']
-));
-
-$section->addInput(new Form_Checkbox(
-	'logprivatenets',
-	null,
-	'Log packets blocked by \'Block Private Networks\' rules',
-	$pconfig['logprivatenets']
-));
-
-$section->addInput(new Form_Checkbox(
-	'lognginx',
-	'Web Server Log',
-	'Log errors from the web server process',
-	$pconfig['lognginx']
-))->setHelp('If this is checked, errors from the web server process for the GUI or Captive Portal will appear in the main system log.');
-
-$section->addInput(new Form_Checkbox(
 	'rawfilter',
 	'Raw Logs',
 	'Show raw filter logs',
@@ -364,19 +350,75 @@ $section->addInput(new Form_Checkbox(
 	$pconfig['disablelocallogging']
 ))->setHelp('WARNING: This will also disable Login Protection!');
 
-$section->addInput(new Form_Checkbox(
-	'logconfigchanges',
-	'Log Configuration Changes',
-	"Generate log entries when making changes to the configuration.",
-	$pconfig['logconfigchanges']
-));
-
 $section->addInput(new Form_Button(
 	'resetlogs',
 	'Reset Log Files',
 	null,
 	'fa-solid fa-trash-can'
 ))->addClass('btn-danger btn-sm')->setHelp('Clears all local log files and reinitializes them as empty logs. This also restarts the DHCP daemon. Use the Save button first if any setting changes have been made.');
+
+$form->add($section);
+$section = new Form_Section('Logging Preferences');
+
+$section->addInput(new Form_Checkbox(
+	'logdefaultblock',
+	null,
+	'Default firewall "block" rules',
+	$pconfig['logdefaultblock']
+))->setHelp('Log packets that are %1$sblocked%2$s by the implicit default block rule.', '<strong>', '</strong>');
+
+$section->addInput(new Form_Checkbox(
+	'logdefaultpass',
+	null,
+	'Default firewall "pass" rules',
+	$pconfig['logdefaultpass']
+))->setHelp('Log packets that are %1$sallowed%2$s by the implicit ' .
+	'default pass rule. Note: Packets with IP options are not affected ' .
+	'by this option and %3$sare logged by default%4$s.', '<strong>', '</strong>',
+	'<a target="_blank" href="https://docs.netgate.com/pfsense/en/latest/troubleshooting/log-filter-blocked.html#packets-with-ip-options">', '</a>'
+);
+
+$section->addInput(new Form_Checkbox(
+	'logbogons',
+	null,
+	'Default "Bogon Networks" block rules',
+	$pconfig['logbogons']
+))->setHelp('Log packets that are %1$sblocked%2$s by the assigned interface option "Block bogon networks".', '<strong>', '</strong>');
+
+$section->addInput(new Form_Checkbox(
+	'logprivatenets',
+	null,
+	'Default "Private Networks" block rules',
+	$pconfig['logprivatenets']
+))->setHelp('Log packets that are %1$sblocked%2$s by the assigned interface option "Block private networks and loopback addresses".', '<strong>', '</strong>');
+
+$section->addInput(new Form_Checkbox(
+	'loglinklocal4',
+	null,
+	'Default "IPv4 link-local" block rules',
+	$pconfig['loglinklocal4']
+))->setHelp('Log packets that are %1$sblocked%2$s by the default "Block IPv4 link-local" rules.', '<strong>', '</strong>');
+
+$section->addInput(new Form_Checkbox(
+	'logsnort2c',
+	null,
+	'Hosts blocked by IDS',
+	$pconfig['logsnort2c']
+))->setHelp('Log packets that are %1$sblocked%2$s by IDS packages.', '<strong>', '</strong>');
+
+$section->addInput(new Form_Checkbox(
+	'lognginx',
+	null,
+	'Web server',
+	$pconfig['lognginx']
+))->setHelp('Log errors from the web server process for the GUI and Captive Portal.');
+
+$section->addInput(new Form_Checkbox(
+	'logconfigchanges',
+	null,
+	"Configuration changes",
+	$pconfig['logconfigchanges']
+))->setHelp('Log changes to the configuration.');
 
 $form->add($section);
 $section = new Form_Section('Log Rotation Options');

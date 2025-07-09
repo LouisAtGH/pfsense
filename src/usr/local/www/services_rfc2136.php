@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -30,23 +30,20 @@
 
 require_once("guiconfig.inc");
 
-init_config_arr(array('dnsupdates', 'dnsupdate'));
-$a_rfc2136 = &$config['dnsupdates']['dnsupdate'];
-
 if ($_POST['act'] == "del") {
-	unset($a_rfc2136[$_POST['id']]);
+	config_del_path("dnsupdates/dnsupdate/{$_POST['id']}");
 
 	write_config("RFC 2136 client deleted");
 
 	header("Location: services_rfc2136.php");
 	exit;
 } else if ($_POST['act'] == "toggle") {
-	if ($a_rfc2136[$_POST['id']]) {
-		if (isset($a_rfc2136[$_POST['id']]['enable'])) {
-			unset($a_rfc2136[$_POST['id']]['enable']);
+	if (config_get_path("dnsupdates/dnsupdate/{$_POST['id']}")) {
+		if (config_path_enabled("dnsupdates/dnsupdate/{$_POST['id']}")) {
+			config_del_path("dnsupdates/dnsupdate/{$_POST['id']}/enable");
 			$action = "disabled";
 		} else {
-			$a_rfc2136[$_POST['id']]['enable'] = true;
+			config_set_path("dnsupdates/dnsupdate/{$_POST['id']}/enable", true);
 			$action = "enabled";
 		}
 		write_config("RFC 2136 {$action}");
@@ -96,7 +93,7 @@ $iflist = get_configured_interface_with_descr();
 $groupslist = return_gateway_groups_array();
 
 $i = 0;
-foreach ($a_rfc2136 as $rfc2136):
+foreach (config_get_path('dnsupdates/dnsupdate', []) as $rfc2136):
 	if (!is_array($rfc2136) || empty($rfc2136)) {
 		continue;
 	}
@@ -106,7 +103,7 @@ foreach ($a_rfc2136 as $rfc2136):
 
 	if (file_exists($filename)) {
 		if (isset($rfc2136['usepublicip'])) {
-			$ipaddr = dyndnsCheckIP($if);
+			$ipaddr = dyndnsCheckIP($if, null, AF_INET);
 		} else {
 			$ipaddr = get_interface_ip($if);
 		}
@@ -126,7 +123,7 @@ foreach ($a_rfc2136 as $rfc2136):
 	} elseif (file_exists($filename_v6)) {
 		$ipv6addr = get_interface_ipv6($if);
 		$cached_ipv6_s = explode("|", file_get_contents($filename_v6));
-		$cached_ipv6 = $cached_ip_s[0];
+		$cached_ipv6 = $cached_ipv6_s[0];
 
 		if ($ipv6addr == $cached_ipv6) {
 			$icon_class = "fa-solid fa-check-circle";
@@ -145,15 +142,15 @@ foreach ($a_rfc2136 as $rfc2136):
 							</td>
 							<td>
 <?php
-	foreach ($iflist as $if => $ifdesc) {
-		if ($rfc2136['interface'] == $if) {
+	foreach ($iflist as $ifname => $ifdesc) {
+		if ($rfc2136['interface'] == $ifname) {
 			print($ifdesc);
 			break;
 		}
 	}
-	foreach ($groupslist as $if => $group) {
-		if ($rfc2136['interface'] == $if) {
-			print($if);
+	foreach ($groupslist as $ifname => $group) {
+		if ($rfc2136['interface'] == $ifname) {
+			print($ifname);
 			break;
 		}
 	}
@@ -171,10 +168,6 @@ foreach ($a_rfc2136 as $rfc2136):
 		print('IPv4: ');
 		print("<span class='{$text_class}'>");
 		print(htmlspecialchars($cached_ip));
-		print('</span>');
-	} elseif (file_exists($filename_v6)) {
-		print("<span class='{$text_class}'>");
-		print(htmlspecialchars($cached_ipv6));
 		print('</span>');
 	} else {
 		print('IPv4: N/A');

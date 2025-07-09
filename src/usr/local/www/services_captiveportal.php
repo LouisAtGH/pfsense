@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * originally based on m0n0wall (http://m0n0.ch/wall)
@@ -64,7 +64,7 @@ if (empty($a_cp) || empty($a_zone)) {
 	exit;
 }
 
-$pgtitle = array(gettext("Services"), gettext("Captive Portal"), config_get_path("captiveportal/{$cpzone}/zone"), gettext("Configuration"));
+$pgtitle = array(gettext("Services"), gettext("Captive Portal"), htmlspecialchars($cpzone), gettext("Configuration"));
 $pglinks = array("", "services_captiveportal_zones.php", "@self", "@self");
 $shortcut_section = "captiveportal";
 
@@ -104,9 +104,6 @@ switch ($action) {
 	default:
 		/* Do nothing, no match */
 }
-
-$a_ca = config_get_path('ca', []);
-$a_cert = config_get_path('cert', []);
 
 $cpzoneid = $pconfig['zoneid'] = config_get_path("captiveportal/{$cpzone}/zoneid");
 $pconfig['descr'] = config_get_path("captiveportal/{$cpzone}/descr");
@@ -196,7 +193,7 @@ if ($_POST['save']) {
 			foreach ($a_cp as $cpkey => $cp) {
 				if ($cpkey != $cpzone || empty($cpzone)) {
 					if (in_array($cpbrif, explode(",", $cp['interface']))) {
-						$input_errors[] = sprintf(gettext('The captive portal cannot be used on interface %1$s since it is used already on %2$s instance.'), $cpbrif, $cp['zone']);
+						$input_errors[] = sprintf(gettext('The captive portal cannot be used on interface %1$s since it is used already on %2$s instance.'), $cpbrif, ($cpkey . ($cp['descr'] ? " ({$cp['descr']})" : '')));
 					}
 				}
 			}
@@ -324,13 +321,10 @@ if ($_POST['save']) {
 	if (!$input_errors) {
 		$newcp = $a_zone;
 		if (empty($newcp['zoneid'])) {
-			$newcp['zoneid'] = 2;
-			foreach ($a_cp as $keycpzone => $cp) {
-				if ($cp['zoneid'] == $newcp['zoneid'] && $keycpzone != $cpzone) {
-					$newcp['zoneid'] += 2; /* Reserve space for SSL/TLS config if needed */
-				}
-			}
-
+			$current_zoneids = array_flip(array_column($a_cp, 'zoneid'));
+			ksort($current_zoneids, SORT_NATURAL);
+			/* Reserve space for SSL/TLS config if needed by */
+			$newcp['zoneid'] = intval(array_key_last($current_zoneids)) + 2;
 			$cpzoneid = $newcp['zoneid'];
 		}
 		if (is_array($_POST['cinterface'])) {

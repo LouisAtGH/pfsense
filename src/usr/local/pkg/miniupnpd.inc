@@ -33,9 +33,13 @@
 		fclose($handle);
 	}
 
-	function upnp_uuid() {
-		/* md5 hash of wan mac */
-		$uuid = md5(get_interface_mac(get_real_interface("wan")));
+	function upnp_uuid($interface) {
+		$mac = get_interface_mac($interface);
+		if (empty($mac)) {
+			$mac = generate_random_mac_address();
+		}
+		/* md5 hash of external inteface mac */
+		$uuid = md5($mac);
 		/* put uuid in correct format 8-4-4-4-12 */
 		return substr($uuid, 0, 8) . '-' . substr($uuid, 9, 4) . '-' . substr($uuid, 13, 4) . '-' . substr($uuid, 17, 4) . '-' . substr($uuid, 21, 12);
 	}
@@ -85,13 +89,12 @@
 	}
 
 	function before_form_miniupnpd(&$pkg) {
-		global $config;
 
 	}
 
 	function validate_form_miniupnpd($post, &$input_errors) {
 		if ($post['enable'] && (!$post['enable_upnp'] && !$post['enable_natpmp'])) {
-			$input_errors[] = 'At least one of \'UPnP\' or \'NAT-PMP\' must be allowed';
+			$input_errors[] = 'At least one of \'UPnP IGD\' or \'PCP/NAT-PMP\' must be allowed';
 		}
 		if ($post['iface_array']) {
 			foreach ($post['iface_array'] as $iface) {
@@ -103,7 +106,7 @@
 			}
 		}
 		if ($post['overridewanip'] && !upnp_validate_ip($post['overridewanip'], false)) {
-			$input_errors[] = 'You must specify a valid ip address in the \'Override WAN address\' field';
+			$input_errors[] = 'You must specify a valid IP address in the \'Override WAN address\' field';
 		}
 		if (($post['download'] && !$post['upload']) || ($post['upload'] && !$post['download'])) {
 			$input_errors[] = 'You must fill in both \'Maximum Download Speed\' and \'Maximum Upload Speed\' fields';
@@ -122,31 +125,31 @@
 			if (!$post['stun_host'] || (!is_ipaddrv4($post['stun_host']) && !is_hostname($post['stun_host']))) {
 				$input_errors[] = 'A valid IP address or hostname for \'STUN Server\' must be specified';
 			}
-			if (!$post['stun_port'] || !is_port($post['stun_port'])) {
+			if ($post['stun_port'] && !is_port($post['stun_port'])) {
 				$input_errors[] = 'A valid port number for \'STUN Port\' must be specified';
 			}
 		}
 
-		/* user permissions validation */
+		/* ACL Entries validation */
 		$j = substr_count(implode(array_keys($post)), "permuser");
 		for ($i = 0; $i < $j; $i++) {
 			if ($post["permuser{$i}"]) {
 				$perm = explode(' ', $post["permuser{$i}"]);
 				/* should explode to 4 args */
 				if (count($perm) != 4) {
-					$input_errors[] = "You must follow the specified format in the 'User specified permissions {$i}' field";
+					$input_errors[] = "You must follow the specified format in the 'ACL Entries {$i}' field";
 				} else {
 					/* must with allow or deny */
 					if (!($perm[0] == 'allow' || $perm[0] == 'deny')) {
-						$input_errors[] = "You must begin with allow or deny in the 'User specified permissions {$i}' field";
+						$input_errors[] = "You must begin with allow or deny in the 'ACL Entries {$i}' field";
 					}
 					/* verify port or port range */
 					if (!upnp_validate_port($perm[1]) || !upnp_validate_port($perm[3])) {
-						$input_errors[] = "You must specify a port or port range between 0 and 65535 in the 'User specified permissions {$i}' field";
+						$input_errors[] = "You must specify a port or port range between 1 and 65535 in the 'ACL Entries {$i}' field";
 					}
 					/* verify ip address */
 					if (!upnp_validate_ip($perm[2], true)) {
-						$input_errors[] = "You must specify a valid ip address in the 'User specified permissions {$i}' field";
+						$input_errors[] = "You must specify a valid IP address in the 'ACL Entries {$i}' field";
 					}
 				}
 			}
@@ -154,7 +157,7 @@
 	}
 
 	function sync_package_miniupnpd() {
-		global $g, $config;
+		global $g;
 		global $input_errors;
 
 		$upnp_config = config_get_path('installedpackages/miniupnpd/config/0');
@@ -178,7 +181,7 @@
 		$ifaces_active = '';
 
 		/* since config is written before this file is invoked we don't need to read post data */
-		if ($upnp_config['enable'] && !empty($upnp_config['iface_array'])) {
+		if ($upnp_config['enable'] == 'on' && !empty($upnp_config['iface_array'])) {
 			$iface_array = explode(',', $upnp_config['iface_array']);
 
 			foreach ($iface_array as $iface) {
@@ -201,7 +204,7 @@
 							$ifaces_active .= ", {$iface}";
 						}
 					} else {
-						upnp_warn("Interface {$iface} has no ip address, ignoring");
+						upnp_warn("Interface {$iface} has no IP address, ignoring");
 					}
 				} else {
 					upnp_warn("Could not resolve real interface for {$iface}");
@@ -224,12 +227,12 @@
 				}
 
 				/* enable logging of packets handled by miniupnpd rules */
-				if ($upnp_config['logpackets']) {
+				if ($upnp_config['logpackets'] == 'on') {
 					$config_text .= "packet_log=yes\n";
 				}
 
 				/* enable system uptime instead of miniupnpd uptime */
-				if ($upnp_config['sysuptime']) {
+				if ($upnp_config['sysuptime'] == 'on') {
 					$config_text .= "system_uptime=yes\n";
 				}
 
@@ -237,19 +240,21 @@
 				$config_text .= "secure_mode=yes\n";
 
 				/* set webgui url */
+				$webgui_config = config_get_path('system/webgui');
 				if (!empty($upnp_config['presentationurl'])){
 					$config_text .= "presentation_url=" . $upnp_config['presentationurl'] . "\n";
-				} elseif (!empty($config['system']['webgui']['protocol'])) {
-					$config_text .= "presentation_url={$config['system']['webgui']['protocol']}://{$webgui_ip}";
-					if (!empty($config['system']['webgui']['port'])) {
-						$config_text .= ":{$config['system']['webgui']['port']}";
+				} elseif (!empty($webgui_config['protocol'])) {
+					$config_text .= "presentation_url={$webgui_config['protocol']}://{$webgui_ip}";
+					if (!empty($webgui_config['port'])) {
+						$config_text .= ":{$webgui_config['port']}";
 					}
 					$config_text .= "/\n";
 				}
 
 				/* set uuid and serial */
-				$config_text .= "uuid=".upnp_uuid()."\n";
-				$config_text .= "serial=".strtoupper(substr(upnp_uuid(), 0, 8))."\n";
+				$uuid = upnp_uuid($ext_ifname);
+				$config_text .= "uuid={$uuid}\n";
+				$config_text .= "serial=".strtoupper(substr($uuid, 0, 8))."\n";
 
 				/* set model number */
 				if (!empty($upnp_config['modelnumber'])){
@@ -266,8 +271,8 @@
 					}
 				}
 
-				if ($upnp_config['permdefault']) {
-					$config_text .= "deny 0-65535 0.0.0.0/0 0-65535\n";
+				if ($upnp_config['permdefault'] == 'on') {
+					$config_text .= "deny 1-65535 0.0.0.0/0 1-65535\n";
 				}
 
 				/* Recheck if queue is valid */
@@ -280,15 +285,17 @@
 					$config_text .= "queue={$upnp_config['upnpqueue']}\n";
 				}
 
-				/* Allow UPnP or NAT-PMP as requested */
-				$config_text .= "enable_upnp="   . ($upnp_config['enable_upnp']   ? "yes\n" : "no\n");
-				$config_text .= "enable_natpmp=" . ($upnp_config['enable_natpmp'] ? "yes\n" : "no\n");
+				/* Allow UPnP IGD or PCP/NAT-PMP as requested */
+				$config_text .= "enable_upnp="   . ($upnp_config['enable_upnp'] == 'on' ? "yes\n" : "no\n");
+				$config_text .= "enable_pcp_pmp=" . ($upnp_config['enable_natpmp'] == 'on' ? "yes\n" : "no\n");
 
 				/* STUN configuration */
-				if ($upnp_config['enable_stun']) {
+				if ($upnp_config['enable_stun'] == 'on') {
 					$config_text .= "ext_perform_stun=yes\n";
 					$config_text .= "ext_stun_host={$upnp_config['stun_host']}\n";
-					$config_text .= "ext_stun_port={$upnp_config['stun_port']}\n";
+					if ($upnp_config['stun_port']){
+						$config_text .= "ext_stun_port={$upnp_config['stun_port']}\n";
+					}
 				}
 
 				/* write out the configuration */
@@ -309,7 +316,7 @@
 			/* lets stop the service and remove the rc file */
 
 			if (file_exists($config_file)) {
-				if (!$upnp_config['enable']) {
+				if ($upnp_config['enable'] != 'on') {
 					upnp_notice('Stopping service: miniupnpd disabled');
 				} else {
 					upnp_notice('Stopping service: no interfaces selected');

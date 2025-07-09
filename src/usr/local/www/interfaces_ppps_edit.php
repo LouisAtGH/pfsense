@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * Copyright (c) 2010 Gabriel B. <gnoahb@gmail.com>
  * All rights reserved.
  *
@@ -41,9 +41,6 @@ define("CRON_WEEKLY_PATTERN", "0 0 * * 0");
 define("CRON_DAILY_PATTERN", "0 0 * * *");
 define("CRON_HOURLY_PATTERN", "0 * * * *");
 
-init_config_arr(array('ppps', 'ppp'));
-$a_ppps = &$config['ppps']['ppp'];
-
 $iflist = get_configured_interface_with_descr();
 
 if (isset($_REQUEST['type'])) {
@@ -54,104 +51,106 @@ if (isset($_REQUEST['id']) && is_numericint($_REQUEST['id'])) {
 	$id = $_REQUEST['id'];
 }
 
-if (isset($_REQUEST['id']) && is_numericint($_REQUEST['id'])) {
-	$id = $_REQUEST['id'];
-}
-
-if (isset($id) && $a_ppps[$id]) {
-	$pconfig['ptpid'] = $a_ppps[$id]['ptpid'];
+unset($input_errors);
+$this_ppp_config = isset($id) ? config_get_path("ppps/ppp/{$id}") : null;
+if ($this_ppp_config) {
+	$pconfig['ptpid'] = $this_ppp_config['ptpid'];
 	if (!isset($_REQUEST['type'])) {
-		$pconfig['type'] = $a_ppps[$id]['type'];
+		$pconfig['type'] = $this_ppp_config['type'];
 	}
-	$pconfig['interfaces'] = explode(",", $a_ppps[$id]['ports']);
-	$pconfig['username'] = $a_ppps[$id]['username'];
-	$pconfig['password'] = base64_decode($a_ppps[$id]['password']);
-	if (isset($a_ppps[$id]['secret'])) {
-		$pconfig['secret'] = base64_decode($a_ppps[$id]['secret']);
+	$pconfig['interfaces'] = array_filter(explode(",", $this_ppp_config['ports']));
+	if (config_path_enabled('system', 'use_if_pppoe') &&
+	    is_array($pconfig['interfaces']) && count($pconfig['interfaces']) > 1) {
+		$input_errors[] = gettext("Multilink connections (MLPPP) using the if_pppoe kernel driver is not currently supported. Please select only one Link Interface.");
 	}
-	if (isset($a_ppps[$id]['ondemand'])) {
+	$pconfig['username'] = $this_ppp_config['username'];
+	$pconfig['password'] = base64_decode($this_ppp_config['password']);
+	if (isset($this_ppp_config['secret'])) {
+		$pconfig['secret'] = base64_decode($this_ppp_config['secret']);
+	}
+	if (isset($this_ppp_config['ondemand'])) {
 		$pconfig['ondemand'] = true;
 	}
-	$pconfig['idletimeout'] = $a_ppps[$id]['idletimeout'];
-	$pconfig['uptime'] = $a_ppps[$id]['uptime'];
-	$pconfig['descr'] = $a_ppps[$id]['descr'];
-	$bandwidth = explode(",", $a_ppps[$id]['bandwidth']);
+	$pconfig['idletimeout'] = $this_ppp_config['idletimeout'];
+	$pconfig['uptime'] = $this_ppp_config['uptime'];
+	$pconfig['descr'] = $this_ppp_config['descr'];
+	$bandwidth = explode(",", $this_ppp_config['bandwidth']);
 	for ($i = 0; $i < count($bandwidth); $i++)
 		$pconfig['bandwidth'][$pconfig['interfaces'][$i]] = $bandwidth[$i];
-	$mtu = explode(",", $a_ppps[$id]['mtu']);
+	$mtu = explode(",", $this_ppp_config['mtu']);
 	for ($i = 0; $i < count($mtu); $i++)
 		$pconfig['mtu'][$pconfig['interfaces'][$i]] = $mtu[$i];
-	$mru = explode(",", $a_ppps[$id]['mru']);
+	$mru = explode(",", $this_ppp_config['mru']);
 	for ($i = 0; $i < count($mru); $i++)
 		$pconfig['mru'][$pconfig['interfaces'][$i]] = $mru[$i];
-	$mrru = explode(",", $a_ppps[$id]['mrru']);
+	$mrru = explode(",", $this_ppp_config['mrru']);
 	for ($i = 0; $i < count($mrru); $i++)
 		$pconfig['mrru'][$pconfig['interfaces'][$i]] = $mrru[$i];
 
-	if (isset($a_ppps[$id]['shortseq'])) {
+	if (isset($this_ppp_config['shortseq'])) {
 		$pconfig['shortseq'] = true;
 	}
 
-	if (isset($a_ppps[$id]['acfcomp'])) {
+	if (isset($this_ppp_config['acfcomp'])) {
 		$pconfig['acfcomp'] = true;
 	}
-	if (isset($a_ppps[$id]['protocomp'])) {
+	if (isset($this_ppp_config['protocomp'])) {
 		$pconfig['protocomp'] = true;
 	}
-	if (isset($a_ppps[$id]['pppoe-multilink-over-singlelink'])) {
+	if (isset($this_ppp_config['pppoe-multilink-over-singlelink'])) {
 		$pconfig['pppoe-multilink-over-singlelink'] = true;
 	}
-	if (isset($a_ppps[$id]['mtu-override'])) {
+	if (isset($this_ppp_config['mtu-override'])) {
 		$pconfig['mtu-override'] = true;
 	}
-	if (isset($a_ppps[$id]['vjcomp'])) {
+	if (isset($this_ppp_config['vjcomp'])) {
 		$pconfig['vjcomp'] = true;
 	}
-	if (isset($a_ppps[$id]['tcpmssfix'])) {
+	if (isset($this_ppp_config['tcpmssfix'])) {
 		$pconfig['tcpmssfix'] = true;
 	}
-	switch ($a_ppps[$id]['type']) {
+	switch ($this_ppp_config['type']) {
 		case "ppp":
-			$pconfig['initstr'] = base64_decode($a_ppps[$id]['initstr']);
-			$pconfig['simpin'] = $a_ppps[$id]['simpin'];
-			$pconfig['pin-wait'] = $a_ppps[$id]['pin-wait'];
-			$pconfig['apn'] = $a_ppps[$id]['apn'];
-			$pconfig['apnum'] = $a_ppps[$id]['apnum'];
-			$pconfig['phone'] = $a_ppps[$id]['phone'];
-			$pconfig['connect-timeout'] = $a_ppps[$id]['connect-timeout'];
-			$localip = explode(",", $a_ppps[$id]['localip']);
+			$pconfig['initstr'] = base64_decode($this_ppp_config['initstr']);
+			$pconfig['simpin'] = $this_ppp_config['simpin'];
+			$pconfig['pin-wait'] = $this_ppp_config['pin-wait'];
+			$pconfig['apn'] = $this_ppp_config['apn'];
+			$pconfig['apnum'] = $this_ppp_config['apnum'];
+			$pconfig['phone'] = $this_ppp_config['phone'];
+			$pconfig['connect-timeout'] = $this_ppp_config['connect-timeout'];
+			$localip = array_filter(explode(",", $this_ppp_config['localip']));
 			for ($i = 0; $i < count($localip); $i++)
 				$pconfig['localip'][$pconfig['interfaces'][$i]] = $localip[$i];
-			$gateway = explode(",", $a_ppps[$id]['gateway']);
+			$gateway = array_filter(explode(",", $this_ppp_config['gateway']));
 			for ($i = 0; $i < count($gateway); $i++)
 				$pconfig['gateway'][$pconfig['interfaces'][$i]] = $gateway[$i];
-			$pconfig['country'] = $a_ppps[$id]['country'];
-			$pconfig['provider'] = $a_ppps[$id]['provider'];
-			$pconfig['providerplan'] = $a_ppps[$id]['providerplan'];
+			$pconfig['country'] = $this_ppp_config['country'];
+			$pconfig['provider'] = $this_ppp_config['provider'];
+			$pconfig['providerplan'] = $this_ppp_config['providerplan'];
 			break;
 		case "l2tp":
 		case "pptp":
-			$localip = explode(",", $a_ppps[$id]['localip']);
+			$localip = array_filter(explode(",", $this_ppp_config['localip']));
 			for ($i = 0; $i < count($localip); $i++)
 				$pconfig['localip'][$pconfig['interfaces'][$i]] = $localip[$i];
-			$subnet = explode(",", $a_ppps[$id]['subnet']);
+			$subnet = array_filter(explode(",", $this_ppp_config['subnet']));
 			for ($i = 0; $i < count($subnet); $i++)
 				$pconfig['subnet'][$pconfig['interfaces'][$i]] = $subnet[$i];
-			$gateway = explode(",", $a_ppps[$id]['gateway']);
+			$gateway = array_filter(explode(",", $this_ppp_config['gateway']));
 			for ($i = 0; $i < count($gateway); $i++)
 				$pconfig['gateway'][$pconfig['interfaces'][$i]] = $gateway[$i];
 		case "pppoe":
-			$pconfig['provider'] = $a_ppps[$id]['provider'];
-			if (isset($a_ppps[$id]['provider']) && empty($a_ppps[$id]['provider'])) {
+			$pconfig['provider'] = $this_ppp_config['provider'];
+			if (isset($this_ppp_config['provider']) && empty($this_ppp_config['provider'])) {
 				$pconfig['null_service'] = true;
 			}
 			/* ================================================ */
 			/* = force a connection reset at a specific time? = */
 			/* ================================================ */
 
-			if (isset($a_ppps[$id]['pppoe-reset-type'])) {
-				$pconfig['pppoe-reset-type'] = $a_ppps[$id]['pppoe-reset-type'];
-				$itemhash = getMPDCRONSettings($a_ppps[$id]['if']);
+			if (isset($this_ppp_config['pppoe-reset-type'])) {
+				$pconfig['pppoe-reset-type'] = $this_ppp_config['pppoe-reset-type'];
+				$itemhash = getMPDCRONSettings($this_ppp_config['if']);
 				$cronitem = $itemhash['ITEM'];
 				if (isset($cronitem)) {
 					$resetTime = "{$cronitem['minute']} {$cronitem['hour']} {$cronitem['mday']} {$cronitem['month']} {$cronitem['wday']}";
@@ -159,7 +158,7 @@ if (isset($id) && $a_ppps[$id]) {
 					$resetTime = NULL;
 				}
 
-				if ($a_ppps[$id]['pppoe-reset-type'] == "custom") {
+				if ($this_ppp_config['pppoe-reset-type'] == "custom") {
 					$resetTime_a = explode(" ", $resetTime);
 					$pconfig['pppoe_pr_custom'] = true;
 					$pconfig['pppoe_resetminute'] = $resetTime_a[0];
@@ -170,7 +169,7 @@ if (isset($id) && $a_ppps[$id]) {
 					if ($resetTime_a[2] <> "*" && $resetTime_a[3] <> "*") {
 						$pconfig['pppoe_resetdate'] = "{$resetTime_a[3]}/{$resetTime_a[2]}/" . date("Y");
 					}
-				} else if ($a_ppps[$id]['pppoe-reset-type'] == "preset") {
+				} else if ($this_ppp_config['pppoe-reset-type'] == "preset") {
 					$pconfig['pppoe_pr_preset'] = true;
 
 					switch ($resetTime) {
@@ -249,7 +248,7 @@ if ($_POST['save']) {
 		if ($_POST['passwordfld'] != DMYPWD) {
 			$pconfig['password'] = $_POST['passwordfld'];
 		} else {
-			$pconfig['password'] = base64_decode($a_ppps[$id]['password']);
+			$pconfig['password'] = base64_decode($this_ppp_config['password']);
 		}
 	} else {
 		$input_errors[] = gettext("Password and confirmed password must match.");
@@ -257,8 +256,11 @@ if ($_POST['save']) {
 	if (($_POST['type'] == 'l2tp') && (isset($_POST['secret']))) {
 		$pconfig['secret'] = $_POST['secret'];
 	}
-	if (($_POST['type'] == "ppp") && (count($_POST['interfaces']) > 1)) {
+	if (($_POST['type'] == "ppp") && is_array($_POST['interfaces']) && (count($_POST['interfaces']) > 1)) {
 		$input_errors[] = gettext("Multilink connections (MLPPP) using the PPP link type is not currently supported. Please select only one Link Interface.");
+	}
+	if (config_path_enabled('system', 'use_if_pppoe') && is_array($_POST['interfaces']) && (count($_POST['interfaces']) > 1)) {
+		$input_errors[] = gettext("Multilink connections (MLPPP) using the if_pppoe kernel driver is not currently supported. Please select only one Link Interface.");
 	}
 	if ($_POST['provider'] && $_POST['null_service']) {
 		$input_errors[] = gettext("Do not specify both a Service name and a NULL Service name.");
@@ -311,16 +313,17 @@ if ($_POST['save']) {
 		}
 
 		// Loop through each individual link/port and check max mtu
+		$if_config = config_get_path('interfaces', []);
 		foreach ($_POST['interfaces'] as $iface) {
 			if (isset($_POST['mtu'][$iface]) &&
 			    strlen($_POST['mtu'][$iface]) > 0) {
 				$parent_array = get_parent_interface($iface);
 				$parent = $parent_array[0];
 				$friendly = convert_real_interface_to_friendly_interface_name($parent);
-				if (!empty($config['interfaces'][$friendly]['mtu']) &&
-					$_POST['mtu'][$iface] > ($config['interfaces'][$friendly]['mtu'] - 8)) {
+				if (!empty($friendly) && !empty($if_config[$friendly]['mtu']) &&
+					$_POST['mtu'][$iface] > ($if_config[$friendly]['mtu'] - 8)) {
 					$input_errors[] = sprintf(gettext('The MTU (%1$d) is too big for %2$s (maximum allowed with current settings: %3$d).'),
-						$_POST['mtu'][$iface], $iface, $config['interfaces'][$friendly]['mtu'] - 8);
+						$_POST['mtu'][$iface], $iface, $if_config[$friendly]['mtu'] - 8);
 				}
 			}
 		}
@@ -331,7 +334,7 @@ if ($_POST['save']) {
 		if (!isset($id))
 			$ppp['ptpid'] = interfaces_ptpid_next();
 		else
-			$ppp['ptpid'] = $a_ppps[$id]['ptpid'];
+			$ppp['ptpid'] = $this_ppp_config['ptpid'];
 
 		$ppp['type'] = $_POST['type'];
 		$ppp['if'] = $ppp['type'].$ppp['ptpid'];
@@ -341,7 +344,7 @@ if ($_POST['save']) {
 		if ($_POST['passwordfld'] != DMYPWD) {
 			$ppp['password'] = base64_encode($_POST['passwordfld']);
 		} else {
-			$ppp['password'] = $a_ppps[$id]['password'];
+			$ppp['password'] = $this_ppp_config['password'];
 		}
 		if (($_POST['type'] == 'l2tp') && (!empty($_POST['secret']))) {
 			$ppp['secret'] = base64_encode($_POST['secret']);
@@ -438,7 +441,11 @@ if ($_POST['save']) {
 		$ppp['mtu-override'] =
 		    $_POST['mtu-override'] ? true : false;
 		$ppp['vjcomp'] = $_POST['vjcomp'] ? true : false;
-		$ppp['tcpmssfix'] = $_POST['tcpmssfix'] ? true : false;
+		if (config_path_enabled('system', 'use_if_pppoe')) {
+			$ppp['tcpmssfix'] = $_POST['ifpppoe_tcpmssfix'] ? true : false;
+		} else {
+			$ppp['tcpmssfix'] = $_POST['tcpmssfix'] ? true : false;
+		}
 		if (is_array($port_data['bandwidth'])) {
 			$ppp['bandwidth'] = implode(',', $port_data['bandwidth']);
 		}
@@ -457,17 +464,19 @@ if ($_POST['save']) {
 		*/
 		handle_pppoe_reset($_POST);
 
-		if (isset($id) && $a_ppps[$id]) {
-			$a_ppps[$id] = $ppp;
+		if ($this_ppp_config) {
+			$this_ppp_config = $ppp;
+			config_set_path("ppps/ppp/{$id}", $ppp);
 		} else {
-			$a_ppps[] = $ppp;
+			config_set_path('ppps/ppp/', $ppp);
 		}
 
 		write_config("PPP interface added");
 		configure_cron();
 
+		$if_config = config_get_path('interfaces', []);
 		foreach ($iflist as $pppif => $ifdescr) {
-			if ($config['interfaces'][$pppif]['if'] == $ppp['if']) {
+			if ($if_config[$pppif]['if'] == $ppp['if']) {
 				interface_ppps_configure($pppif);
 			}
 		}
@@ -526,6 +535,10 @@ $section->addInput(new Form_Select(
 ));
 
 $linklist = build_ppps_link_list();
+$if_select_help = "Select the interface for the PPP connection.";
+if ($pconfig['type'] == "pppoe" && !config_path_enabled('system', 'use_if_pppoe')) {
+	$if_select_help = "Select at least two interfaces for Multilink (MLPPP) connections.";
+}
 
 $section->addInput(new Form_Select(
 	'interfaces',
@@ -533,7 +546,7 @@ $section->addInput(new Form_Select(
 	$linklist['selected'],
 	$linklist['list'],
 	true // Allow multiples
-))->addClass('interfaces')->setHelp('Select at least two interfaces for Multilink (MLPPP) connections.');
+))->addClass('interfaces')->setHelp($if_select_help);
 
 $section->addInput(new Form_Input(
 	'descr',
@@ -788,7 +801,7 @@ $section->add($group);
 
 $btnadv = new Form_Button(
 		'btnadvopts',
-		'Display Advanced',
+		gettext('Display Advanced'),
 		null,
 		'fa-solid fa-cog'
 );
@@ -800,6 +813,20 @@ $section->addInput(new Form_StaticText(
 	$btnadv
 ));
 
+$form->add($section);
+
+$section = new Form_Section('Advanced Configuration');
+$section->addClass('advifpppoeopts');
+$section->addInput(new Form_Checkbox(
+	'ifpppoe_tcpmssfix',
+	'TCPmssFix',
+	'Disable tcpmssfix (enabled by default).',
+	$pconfig['tcpmssfix']
+))->setHelp('Causes mpd to adjust incoming and outgoing TCP SYN segments so that the requested maximum segment size is not greater than the amount ' .
+			'allowed by the interface MTU. This is necessary in many setups to avoid problems caused by routers that drop ICMP Datagram Too Big messages. Without these messages, ' .
+			'the originating machine sends data, it passes the rogue router then hits a machine that has an MTU that is not big enough for the data. Because the IP Don\'t Fragment option is set, ' .
+			'this machine sends an ICMP Datagram Too Big message back to the originator and drops the packet. The rogue router drops the ICMP message and the originator never ' .
+			'gets to discover that it must reduce the fragment size or drop the IP Don\'t Fragment option from its outgoing data.');
 $form->add($section);
 
 $section = new Form_Section('Advanced Configuration');
@@ -932,7 +959,7 @@ $form->addGlobal(new Form_Input(
 	$pconfig['ptpid']
 ));
 
-if (isset($id) && $a_ppps[$id]) {
+if ($this_ppp_config) {
 	$form->addGlobal(new Form_Input(
 		'id',
 		null,
@@ -1003,7 +1030,16 @@ events.push(function() {
 			showadvopts = !showadvopts;
 		}
 
-		hideClass('adnlopts', !showadvopts);
+		// if_pppoe options.
+		var if_pppoetype = <?php if (config_path_enabled('system', 'use_if_pppoe')) { echo 'true'; } else { echo 'false'; } ?>
+
+		if (if_pppoetype) {
+			hideClass('adnlopts', 1);
+			hideClass('advifpppoeopts', !showadvopts);
+		} else {
+			hideClass('adnlopts', !showadvopts);
+			hideClass('advifpppoeopts', 1);
+		}
 
 		// The options that follow are only shown if type == 'ppp'
 		var ppptype = ($('#type').val() == 'ppp');
@@ -1017,9 +1053,9 @@ events.push(function() {
 		hideCheckbox('uptime', !(showadvopts && ppptype));
 
 		// The options that follow are only shown if type == 'pppoe'
-		var pppoetype = ($('#type').val() == 'pppoe');
+		var pppoetype = ($('#type').val() == 'pppoe' && if_pppoetype == false);
 
-		hideClass('pppoe', !pppoetype);
+		hideClass('pppoe', (!pppoetype && !if_pppoetype));
 		hideResetDisplay(!(showadvopts && pppoetype));
 		hideInput('pppoe-reset-type', !(showadvopts && pppoetype));
 		hideCheckbox('pppoe-multilink-over-singlelink', !(showadvopts && pppoetype));
@@ -1032,8 +1068,8 @@ events.push(function() {
 		} else {
 			text = "<?=gettext('Display Advanced');?>";
 		}
-
-		$('#btnadvopts').html('<i class="fa-solid fa-cog"></i> ' + text);
+		var children = $('#btnadvopts').children();
+		$('#btnadvopts').text(text).prepend(children);
 	} // e-o-show_advopts
 
 	$('#btnadvopts').click(function(event) {

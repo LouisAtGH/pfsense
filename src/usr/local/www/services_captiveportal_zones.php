@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,19 +37,14 @@ require_once("captiveportal.inc");
 global $cpzone;
 global $cpzoneid;
 
-init_config_arr(array('captiveportal'));
-$a_cp = &$config['captiveportal'];
-
 if ($_POST['act'] == "del" && !empty($_POST['zone'])) {
 	$cpzone = strtolower(htmlspecialchars($_POST['zone']));
-	if ($a_cp[$cpzone]) {
-		$cpzoneid = $a_cp[$cpzone]['zoneid'];
-		unset($a_cp[$cpzone]['enable']);
-		captiveportal_configure_zone($a_cp[$cpzone]);
-		unset($a_cp[$cpzone]);
-		if (isset($config['voucher'][$cpzone])) {
-			config_del_path("voucher/{$cpzone}");
-		}
+	if (config_get_path("captiveportal/{$cpzone}")) {
+		$cpzoneid = config_get_path("captiveportal/{$cpzone}/zoneid");
+		config_del_path("captiveportal/{$cpzone}/enable");
+		captiveportal_configure_zone(config_get_path("captiveportal/{$cpzone}", []));
+		config_del_path("captiveportal/{$cpzone}");
+		config_del_path("voucher/{$cpzone}");
 		unlink_if_exists("/var/db/captiveportal{$cpzone}.db");
 		unlink_if_exists("/var/db/captiveportal_usedmacs_{$cpzone}.db");
 		unlink_if_exists("/var/db/voucher_{$cpzone}_*.db");
@@ -85,16 +80,16 @@ if (is_subsystem_dirty('captiveportal')) {
 				<tbody>
 
 <?php
-	foreach ($a_cp as $cpzone => $cpitem):
+	foreach (config_get_path('captiveportal', []) as $cpzone => $cpitem):
 		if (!is_array($cpitem)) {
 			continue;
 		}
 ?>
 					<tr>
-						<td><?=htmlspecialchars($cpitem['zone']);?></td>
+						<td><?=htmlspecialchars($cpzone);?></td>
 						<td>
 <?php
-		$cpifaces = explode(",", $cpitem['interface']);
+		$cpifaces = array_filter(explode(",", $cpitem['interface']));
 		foreach ($cpifaces as $cpiface) {
 			echo convert_friendly_interface_to_friendly_descr($cpiface) . " ";
 		}

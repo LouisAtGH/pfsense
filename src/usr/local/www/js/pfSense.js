@@ -4,7 +4,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -184,10 +184,10 @@ $(function() {
 		input.change();
 	});
 
-	// Add confirm to all btn-danger buttons and fa-trash icons
+	// Add confirm to all btn-danger buttons and fa-trash-can icons
 	// Use element title in the confirmation message, or if not available
 	// the element value
-	$('.btn-danger, .fa-trash').on('click', function(e){
+	$('.btn-danger, .fa-trash-can').on('click', function(e){
 		if (!($(this).hasClass('no-confirm')) && !($(this).hasClass('icon-embed-btn'))) {
 			// Anchors using the automatic get2post system (pfSenseHelpers.js) perform the confirmation dialog
 			// in those functions

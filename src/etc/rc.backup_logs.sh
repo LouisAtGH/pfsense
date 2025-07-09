@@ -4,7 +4,7 @@
 #
 # part of pfSense (https://www.pfsense.org)
 # Copyright (c) 2016 Electric Sheep Fencing
-# Copyright (c) 2016-2024 Rubicon Communications, LLC (Netgate)
+# Copyright (c) 2016-2025 Rubicon Communications, LLC (Netgate)
 # All rights reserved.
 #
 # Based on src/etc/rc.d/savecore from FreeBSD
@@ -36,7 +36,7 @@ if [ -d "${DBPATH}" ]; then
 		mkdir -p "${RAM_Disk_Store}"
 	fi
 
-	/usr/bin/tar -czf "${RAM_Disk_Store}/logs.tgz" -C / "${DBPATH#/}/"
+	/usr/bin/tar -czf "${RAM_Disk_Store}/logs.tgz" --exclude "${DBPATH#/}/restore_ramdisk_store.boot" -C / "${DBPATH#/}/"
 
 	echo "done.";
 fi

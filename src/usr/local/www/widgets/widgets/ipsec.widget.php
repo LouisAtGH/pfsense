@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * Copyright (c) 2004-2005 T. Lechat <dev@lechat.org> (BSD 2 clause)
  * Copyright (c) 2007 Jonathan Watt <jwatt@jwatt.org> (BSD 2 clause)
  * Copyright (c) 2007 Scott Dale (BSD 2 clause)
@@ -33,10 +33,23 @@ require_once("functions.inc");
 require_once("service-utils.inc");
 require_once("ipsec.inc");
 
-// Should always be initialized
-init_config_arr(array('ipsec', 'phase1'));
-init_config_arr(array('ipsec', 'phase2'));
+/*
+ * Validate the "widgetkey" value.
+ * When this widget is present on the Dashboard, $widgetkey is defined before
+ * the Dashboard includes the widget. During other types of requests, such as
+ * saving settings or AJAX, the value may be set via $_POST or similar.
+ */
+if ($_POST['widgetkey'] || $_GET['widgetkey']) {
+	$rwidgetkey = isset($_POST['widgetkey']) ? $_POST['widgetkey'] : (isset($_GET['widgetkey']) ? $_GET['widgetkey'] : null);
+	if (is_valid_widgetkey($rwidgetkey, $user_settings, __FILE__)) {
+		$widgetkey = $rwidgetkey;
+	} else {
+		print gettext("Invalid Widget Key");
+		exit;
+	}
+}
 
+// Should always be initialized
 $ipsec_widget_tabs = array(
 	'overview' => gettext('Overview'),
 	'tunnel' => gettext('Tunnels'),
@@ -263,7 +276,7 @@ if (ipsec_enabled()) {
 }
 
 $mobile = ipsec_dump_mobile();
-$widgetperiod = isset($config['widgets']['period']) ? $config['widgets']['period'] * 1000 : 10000;
+$widgetperiod = config_get_path('widgets/period', 10) * 1000;
 
 if (ipsec_enabled()): ?>
 <div id="<?=htmlspecialchars($widgetkey_nodash)?>-overview" style="display:<?=(($activetab == 'overview') ? 'block': 'none')?>;"  class="table-responsive">
@@ -434,7 +447,7 @@ events.push(function(){
 	ipsecObject.url = "/widgets/widgets/ipsec.widget.php";
 	ipsecObject.callback = ipsec_callback;
 	ipsecObject.parms = postdata;
-	ipsecObject.freq = 1;
+	ipsecObject.freq = 20;
 
 	// Register the AJAX object
 	register_ajax(ipsecObject);

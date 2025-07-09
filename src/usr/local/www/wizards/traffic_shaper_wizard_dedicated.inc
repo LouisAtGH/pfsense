@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -75,7 +75,7 @@ function step1_submitphpaction() {
 }
 
 function step2_stepbeforeformdisplay() {
-	global $config, $pkg;
+	global $pkg;
 	global $stepid, $savemsg;
 
 	$wans = 0;
@@ -294,7 +294,6 @@ function step2_stepbeforeformdisplay() {
 }
 
 function step2_stepsubmitphpaction() {
-	global $config;
 	global $stepid, $savemsg;
 	$sumdownloads = 0;
 
@@ -352,12 +351,12 @@ function step2_stepsubmitphpaction() {
 		config_set_path("ezshaper/step2/conn{$i}uploadspeed", $_POST["conn{$i}uploadspeed"]);
 		config_set_path("ezshaper/step2/conn{$i}download", $_POST["conn{$i}download"]);
 		config_set_path("ezshaper/step2/conn{$i}downloadspeed", $_POST["conn{$i}downloadspeed"]);
-		config_set_path("ezshaper/step2/conn${i}interface", $_POST["conn{$i}interface"]);
+		config_set_path("ezshaper/step2/conn{$i}interface", $_POST["conn{$i}interface"]);
 	}
 }
 
 function step3_stepbeforeformdisplay() {
-	global $config, $pkg;
+	global $pkg;
 	global $stepid, $savemsg;
 
 	$cfgname = "traffic_shaper_wizard_dedicated.xml";
@@ -503,7 +502,6 @@ function step3_stepbeforeformdisplay() {
 }
 
 function step3_stepsubmitphpaction() {
-	global $config;
 	global $stepid, $savemsg;
 
 	if (!$_POST['enable']) {
@@ -595,7 +593,6 @@ function step3_stepsubmitphpaction() {
 }
 
 function step4_stepsubmitphpaction() {
-	global $config;
 	global $stepid, $savemsg;
 
 	if ( $_POST['enable'] ) {
@@ -653,7 +650,7 @@ function step5_stepsubmitphpaction() {
 }
 
 function step8_stepsubmitphpaction() {
-	global $g, $config;
+	global $g;
 
 	/* save the new configuration */
 	apply_all_chosen_items();
@@ -675,7 +672,7 @@ function step8_stepsubmitphpaction() {
 }
 
 function apply_all_chosen_items() {
-	global $config, $g, $altq_list_queues, $gamesplist, $voiplist, $othersplist, $p2plist;
+	global $g, $altq_list_queues, $gamesplist, $voiplist, $othersplist, $p2plist;
 
 	require_once("wizardapp.inc");
 
@@ -703,18 +700,18 @@ function apply_all_chosen_items() {
 		$tmppath = [];
 		$__tmp_altq = new altq_root_queue(); $altq =& $__tmp_altq;
 
-		$altq->SetInterface(config_get_path("ezshaper/step2/conn${i}interface"));
-		$interfacelist[] = config_get_path("ezshaper/step2/conn${i}interface");
-		$altq->SetScheduler(config_get_path("ezshaper/step2/conn${i}uploadscheduler"));
-		$altq->SetBandwidth(floatval(config_get_path("ezshaper/step2/conn${i}upload", 0.0)));
-		$altq->SetBwscale(config_get_path("ezshaper/step2/conn${i}uploadspeed"));
+		$altq->SetInterface(config_get_path("ezshaper/step2/conn{$i}interface"));
+		$interfacelist[] = config_get_path("ezshaper/step2/conn{$i}interface");
+		$altq->SetScheduler(config_get_path("ezshaper/step2/conn{$i}uploadscheduler"));
+		$altq->SetBandwidth(floatval(config_get_path("ezshaper/step2/conn{$i}upload", 0.0)));
+		$altq->SetBwscale(config_get_path("ezshaper/step2/conn{$i}uploadspeed"));
 		$altq->SetEnabled("on");
 		$altq_list_queues[$altq->GetQname()] =& $altq;
-		array_push($tmppath, config_get_path("ezshaper/step2/conn${i}interface"));
+		array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 		$altq->SetLink($tmppath);
 		$altq->wconfig();
 
-		$sched = config_get_path("ezshaper/step2/conn${i}uploadscheduler");
+		$sched = config_get_path("ezshaper/step2/conn{$i}uploadscheduler");
 		$voipbw =0;
 		$voipbwunit = "Kb";
 		$voip = false;
@@ -735,8 +732,8 @@ function apply_all_chosen_items() {
 		if (config_path_enabled('ezshaper/step3')) {
 			$voip = true;
 			if ($sched != "PRIQ") {
-				$voipbw = config_get_path("ezshaper/step3/conn${i}upload");
-				$voipbwunit = config_get_path("ezshaper/step3/conn${i}uploadspeed");
+				$voipbw = config_get_path("ezshaper/step3/conn{$i}upload");
+				$voipbwunit = config_get_path("ezshaper/step3/conn{$i}uploadspeed");
 				if ($voipbwunit == "%") {
 					$factor =  $upbw/100;
 				} else {
@@ -818,20 +815,20 @@ function apply_all_chosen_items() {
 			$tmpcf['ecn'] = "on";
 			$tmpcf['enabled'] = "on";
 			If ($sched == "CBQ") {
-				$tmpcf['bandwidth'] = floatval(config_get_path("ezshaper/step2/conn${i}upload", 0.0));
-				$tmpcf['bandwidthtype'] = config_get_path("ezshaper/step2/conn${i}uploadspeed");
+				$tmpcf['bandwidth'] = floatval(config_get_path("ezshaper/step2/conn{$i}upload", 0.0));
+				$tmpcf['bandwidthtype'] = config_get_path("ezshaper/step2/conn{$i}uploadspeed");
 			} elseif ($sched == "HFSC") {
 				$tmpcf['upperlimit'] = "on";
-				$tmpcf['upperlimit3'] = floatval(config_get_path("ezshaper/step2/conn${i}upload", 0.0)) .
-							config_get_path("ezshaper/step2/conn${i}uploadspeed");
+				$tmpcf['upperlimit3'] = floatval(config_get_path("ezshaper/step2/conn{$i}upload", 0.0)) .
+							config_get_path("ezshaper/step2/conn{$i}uploadspeed");
 				$tmpcf['linkshare'] = "on";
-				$tmpcf['linkshare3'] = floatval(config_get_path("ezshaper/step2/conn${i}upload", 0.0)) .
-							config_get_path("ezshaper/step2/conn${i}uploadspeed");
-				$tmpcf['bandwidth'] =  floatval(config_get_path("ezshaper/step2/conn${i}upload", 0.0));
-				$tmpcf['bandwidthtype'] = config_get_path("ezshaper/step2/conn${i}uploadspeed");
+				$tmpcf['linkshare3'] = floatval(config_get_path("ezshaper/step2/conn{$i}upload", 0.0)) .
+							config_get_path("ezshaper/step2/conn{$i}uploadspeed");
+				$tmpcf['bandwidth'] =  floatval(config_get_path("ezshaper/step2/conn{$i}upload", 0.0));
+				$tmpcf['bandwidthtype'] = config_get_path("ezshaper/step2/conn{$i}uploadspeed");
 			}
 
-			array_push($tmppath, "qInternet");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			//array_pop($tmppath);
 			$qtmp->wconfig();
@@ -861,7 +858,7 @@ function apply_all_chosen_items() {
 			$tmpcf['bandwidth'] = intval($lkbw);
 			$tmpcf['bandwidthtype'] = "%";
 		}
-		array_push($tmppath, "qACK");
+		array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 		$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 		array_pop($tmppath);
 		$qtmp->wconfig();
@@ -896,7 +893,7 @@ function apply_all_chosen_items() {
 			$tmpcf['bandwidth'] = $remainbw * 0.1; /* 10% bandwidth */
 			$tmpcf['bandwidthtype'] = "%";
 		}
-		array_push($tmppath, $tmpcf['name']);
+		array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 		$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 		array_pop($tmppath);
 		$qtmp->wconfig();
@@ -946,7 +943,7 @@ function apply_all_chosen_items() {
 					$tmpcf['bandwidthtype'] = "%";
 				}
 			}
-			array_push($tmppath, "qP2P");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
@@ -988,7 +985,7 @@ function apply_all_chosen_items() {
 				$tmpcf['bandwidth'] = 32;
 				$tmpcf['bandwidthtype'] = "Kb";
 			}
-			array_push($tmppath, "qVoIP");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
@@ -1021,7 +1018,7 @@ function apply_all_chosen_items() {
 				$tmpcf['bandwidth'] = "{$gamesbw}";
 				$tmpcf['bandwidthtype'] = "%";
 			}
-			array_push($tmppath, "qGames");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
@@ -1054,7 +1051,7 @@ function apply_all_chosen_items() {
 				$tmpcf['bandwidth'] = $otherbw;
 				$tmpcf['bandwidthtype'] = "%";
 			}
-			array_push($tmppath, "qOthersHigh");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
@@ -1096,26 +1093,26 @@ function apply_all_chosen_items() {
 				}
 				$tmpcf['linkshare'] = "on";
 			}
-			array_push($tmppath, "qOthersLow");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
 		}
 		array_pop($tmppath);
 
-		$downfactor = wizard_get_bandwidthtype_scale(config_get_path("ezshaper/step2/conn${i}downloadspeed"));
-		$downbw = floatval(config_get_path("ezshaper/step2/conn${i}download", 0.0)) * $downfactor;
+		$downfactor = wizard_get_bandwidthtype_scale(config_get_path("ezshaper/step2/conn{$i}downloadspeed"));
+		$downbw = floatval(config_get_path("ezshaper/step2/conn{$i}download", 0.0)) * $downfactor;
 
 		$tmppath = [];
 		$__tmp_altq = new altq_root_queue(); $altq =& $__tmp_altq;
 
-		$altq->SetInterface(config_get_path("ezshaper/step2/local${i}interface"));
+		$altq->SetInterface(config_get_path("ezshaper/step2/local{$i}interface"));
 		$altq->SetScheduler(config_get_path("ezshaper/step2/local{$i}downloadscheduler"));
-		$altq->SetBandwidth(floatval(config_get_path("ezshaper/step2/conn${i}download", 0.0)));
-		$altq->SetBwscale(config_get_path("ezshaper/step2/conn${i}downloadspeed"));
+		$altq->SetBandwidth(floatval(config_get_path("ezshaper/step2/conn{$i}download", 0.0)));
+		$altq->SetBwscale(config_get_path("ezshaper/step2/conn{$i}downloadspeed"));
 		$altq->SetEnabled("on");
 		$altq_list_queues[$altq->GetQname()] =& $altq;
-		array_push($tmppath, config_get_path("ezshaper/step2/local${i}interface"));
+		array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 		$altq->SetLink($tmppath);
 		$altq->wconfig();
 
@@ -1234,7 +1231,7 @@ function apply_all_chosen_items() {
 				$tmpcf['bandwidth'] = 20; /* 20% bandwidth */
 				$tmpcf['bandwidthtype'] = "%";
 			}
-			array_push($tmppath, $tmpcf['name']);
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
@@ -1268,7 +1265,7 @@ function apply_all_chosen_items() {
 				$tmpcf['bandwidth'] =  $downqbw / 1000;
 				$tmpcf['bandwidthtype'] = "Kb";
 			}
-			array_push($tmppath, "qInternet");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			//array_pop($tmppath);
 			$qtmp->wconfig();
@@ -1301,7 +1298,7 @@ function apply_all_chosen_items() {
 			$tmpcf['bandwidth'] = $lkbw;
 			$tmpcf['bandwidthtype'] = "%";
 		}
-		array_push($tmppath, "qACK");
+		array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 		$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 		array_pop($tmppath);
 		$qtmp->wconfig();
@@ -1352,7 +1349,7 @@ function apply_all_chosen_items() {
 					$tmpcf['bandwidthtype'] = "%";
 				}
 			}
-			array_push($tmppath, "qP2P");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
@@ -1394,7 +1391,7 @@ function apply_all_chosen_items() {
 				$tmpcf['bandwidth'] = 32;
 				$tmpcf['bandwidthtype'] = "Kb";
 			}
-			array_push($tmppath, "qVoIP");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
@@ -1427,7 +1424,7 @@ function apply_all_chosen_items() {
 				$tmpcf['bandwidth'] = "{$gamesbw}";
 				$tmpcf['bandwidthtype'] = "%";
 			}
-			array_push($tmppath, "qGames");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
@@ -1460,7 +1457,7 @@ function apply_all_chosen_items() {
 				$tmpcf['bandwidth'] = $otherbw;
 				$tmpcf['bandwidthtype'] = "%";
 			}
-			array_push($tmppath, "qOthersHigh");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
@@ -1502,7 +1499,7 @@ function apply_all_chosen_items() {
 				}
 				$tmpcf['linkshare'] = "on";
 			}
-			array_push($tmppath, "qOthersLow");
+			array_push($tmppath, shaper_config_get_next_queue_index($tmppath));
 			$qtmp =& $altq->add_queue($q, $tmpcf, $tmppath, $input_errors);
 			array_pop($tmppath);
 			$qtmp->wconfig();
@@ -1775,6 +1772,7 @@ function apply_all_chosen_items() {
 	}
 
 	config_set_path('filter/rule', $filter_rules);
+	filter_rules_sort();
 	write_config(gettext("Shaper configuration saved via traffic shaper wizard."));
 }
 

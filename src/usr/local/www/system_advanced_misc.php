@@ -5,7 +5,7 @@
  * part of pfSense (https://www.pfsense.org)
  * Copyright (c) 2004-2013 BSD Perimeter
  * Copyright (c) 2013-2016 Electric Sheep Fencing
- * Copyright (c) 2014-2024 Rubicon Communications, LLC (Netgate)
+ * Copyright (c) 2014-2025 Rubicon Communications, LLC (Netgate)
  * Copyright (c) 2008 Shrew Soft Inc
  * All rights reserved.
  *
@@ -33,13 +33,14 @@
 ##|*MATCH=system_advanced_misc.php*
 ##|-PRIV
 
-require_once("guiconfig.inc");
-require_once("functions.inc");
-require_once("filter.inc");
+require_once('guiconfig.inc');
+require_once('functions.inc');
+require_once('filter.inc');
 require_once("system.inc");
-require_once("shaper.inc");
-require_once("vpn.inc");
-require_once("system_advanced_misc.inc");
+require_once('shaper.inc');
+require_once('util.inc');
+require_once('vpn.inc');
+require_once('system_advanced_misc.inc');
 
 global $hwpstate_status_descr, $hwpstate_control_levels;
 $hwpstate_status = system_has_hwpstate();
@@ -63,11 +64,7 @@ $mds_modes = array(
 
 $pconfig = getSystemAdvancedMisc();
 
-$crypto_modules = array(
-	'aesni' => gettext("AES-NI CPU-based Acceleration"),
-	'cryptodev' => gettext("BSD Crypto Device (cryptodev)"),
-	'aesni_cryptodev' => gettext("AES-NI and BSD Crypto Device (aesni, cryptodev)"),
-);
+$crypto_modules = getSystemAdvancedMiscCryptoModules();
 
 $thermal_hardware_modules = array(
 	'coretemp' => gettext("Intel Core* CPU on-die thermal sensor"),
@@ -355,8 +352,8 @@ $section->addInput(new Form_Select(
 		'all' => 'Kill all states for lower-priority gateways',
 		'addrfamily' => 'Only kill states with the same address family as the gateway group',
 	]
-))->setHelp('Controls the state killing behavior for the %1$sdefault ' .
-	'gateway%2$s when set to a failover gateway group.',
+))->setHelp('Controls the state killing behavior for the %1$ssystem\'s ' .
+	'default gateway%2$s when set to a failover gateway group.',
 	'<strong>', '</strong>');
 $section->addInput(new Form_Checkbox(
 	'keep_failover_states',
@@ -364,7 +361,8 @@ $section->addInput(new Form_Checkbox(
 	'Don\'t kill policy routing states for lower-priority gateways',
 	$pconfig['keep_failover_states']
 ))->setHelp('Controls the default state killing behavior for %1$sall gateway ' .
-	'groups%2$s on gateway recovery.', '<strong>', '</strong>');
+	'groups%2$s on gateway recovery. This only affects states created by ' .
+	'firewall rules with policy routing.', '<strong>', '</strong>');
 
 $section->addInput(new Form_Select(
 	'gw_down_kill_states',
@@ -471,7 +469,7 @@ $group->add(new Form_Input(
 	'rrdbackup',
 	'Periodic RRD Backup',
 	'number',
-	$config['system']['rrdbackup'],
+	config_get_path('system/rrdbackup'),
 	['min' => 0, 'max' => 24, 'placeholder' => '1 to 24 hours']
 ))->setHelp('RRD Data');
 
@@ -479,7 +477,7 @@ $group->add(new Form_Input(
 	'dhcpbackup',
 	'Periodic DHCP Leases Backup',
 	'number',
-	$config['system']['dhcpbackup'],
+	config_get_path('system/dhcpbackup'),
 	['min' => 0, 'max' => 24, 'placeholder' => '1 to 24 hours']
 ))->setHelp('DHCP Leases');
 
@@ -487,7 +485,7 @@ $group->add(new Form_Input(
 	'logsbackup',
 	'Periodic Logs Backup',
 	'number',
-	$config['system']['logsbackup'],
+	config_get_path('system/logsbackup'),
 	['min' => 0, 'max' => 24, 'placeholder' => '1 to 24 hours']
 ))->setHelp('Log Directory');
 
@@ -495,7 +493,7 @@ $group->add(new Form_Input(
 	'captiveportalbackup',
 	'Periodic Captive Portal DB and Vouchers Backup',
 	'number',
-	$config['system']['captiveportalbackup'],
+	config_get_path('system/captiveportalbackup'),
 	['min' => 0, 'max' => 24, 'placeholder' => '1 to 24 hours']
 ))->setHelp('Captive Portal Data');
 
